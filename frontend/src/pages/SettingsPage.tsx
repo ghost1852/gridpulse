@@ -66,8 +66,12 @@ export function SettingsPage() {
   };
 
   const fetchConfig = async () => {
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      return; // On HTTPS cloud domain, config is managed via P2P / bridge CLI
+    }
     try {
       const apiBase = getApiBase();
+      if (!apiBase) return;
       const res = await fetch(`${apiBase}/api/config`);
       if (res.ok) {
         const data = await res.json();
@@ -81,8 +85,11 @@ export function SettingsPage() {
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.protocol === 'https:') {
+      return;
+    }
     fetchConfig();
-    const interval = setInterval(fetchConfig, 2000);
+    const interval = setInterval(fetchConfig, 3000);
     return () => clearInterval(interval);
   }, [telemetryHost]);
 
@@ -104,6 +111,10 @@ export function SettingsPage() {
     setSaving(true);
     try {
       const apiBase = getApiBase();
+      if (!apiBase || window.location.protocol === 'https:') {
+        setSimulate(simMode);
+        return;
+      }
       await fetch(`${apiBase}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -122,6 +133,7 @@ export function SettingsPage() {
     setSaving(true);
     try {
       const apiBase = getApiBase();
+      if (!apiBase || window.location.protocol === 'https:') return;
       await fetch(`${apiBase}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
