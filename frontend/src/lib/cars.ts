@@ -1,4 +1,4 @@
-// Forza Horizon Car Ordinal to Name Lookup & Local Garage Persistence
+import carsJson from '../data/forzaHorizon6Cars.json';
 
 export interface CarBuild {
   tireCompound: 'stock' | 'street' | 'sport' | 'semi-slick' | 'slick' | 'drift' | 'rally' | 'offroad' | 'drag';
@@ -26,32 +26,84 @@ export const DEFAULT_BUILD: CarBuild = {
   tuningGoal: 'circuit',
 };
 
-// Verified Community Ordinal Map (Only confirmed IDs)
-export const KNOWN_CARS: Record<number, CarData> = {
-  1234: { name: 'Jesko', manufacturer: 'Koenigsegg', year: 2020, class: 'X', pi: 999, drivetrain: 'RWD' },
-  2544: { name: 'Viper ACR', manufacturer: 'Dodge', year: 2016, class: 'S1', pi: 895, drivetrain: 'RWD' },
-  2545: { name: '296 GTB', manufacturer: 'Ferrari', year: 2022, class: 'S2', pi: 970, drivetrain: 'RWD' },
-  2546: { name: '911 GT3 RS', manufacturer: 'Porsche', year: 2023, class: 'S1', pi: 900, drivetrain: 'RWD' },
-  2547: { name: 'Corvette Z06', manufacturer: 'Chevrolet', year: 2023, class: 'S1', pi: 880, drivetrain: 'RWD' },
-  2548: { name: 'AMG ONE', manufacturer: 'Mercedes-AMG', year: 2021, class: 'S2', pi: 998, drivetrain: 'AWD' },
-  2549: { name: 'Chiron', manufacturer: 'Bugatti', year: 2018, class: 'S2', pi: 985, drivetrain: 'AWD' },
-  2550: { name: 'Skyline GT-R V-Spec II', manufacturer: 'Nissan', year: 2002, class: 'A', pi: 780, drivetrain: 'AWD' },
-  2551: { name: 'Supra RZ', manufacturer: 'Toyota', year: 1998, class: 'A', pi: 740, drivetrain: 'RWD' },
-  2552: { name: 'Nevera', manufacturer: 'Rimac', year: 2021, class: 'X', pi: 999, drivetrain: 'AWD' },
-  2554: { name: 'M3 Competition', manufacturer: 'BMW', year: 2021, class: 'S1', pi: 850, drivetrain: 'RWD' },
-  2555: { name: 'Lancer Evolution IX MR', manufacturer: 'Mitsubishi', year: 2006, class: 'B', pi: 680, drivetrain: 'AWD' },
-  2556: { name: 'WRX STI', manufacturer: 'Subaru', year: 2015, class: 'B', pi: 690, drivetrain: 'AWD' },
-  2557: { name: 'Civic Type R', manufacturer: 'Honda', year: 2023, class: 'B', pi: 685, drivetrain: 'FWD' },
-  2558: { name: 'Ford GT', manufacturer: 'Ford', year: 2017, class: 'S1', pi: 890, drivetrain: 'RWD' },
-  2559: { name: 'Senna', manufacturer: 'McLaren', year: 2018, class: 'S2', pi: 960, drivetrain: 'RWD' },
-  2560: { name: '720S Coupe', manufacturer: 'McLaren', year: 2018, class: 'S1', pi: 885, drivetrain: 'RWD' },
-  2561: { name: '488 Pista', manufacturer: 'Ferrari', year: 2019, class: 'S1', pi: 890, drivetrain: 'RWD' },
-  2562: { name: '918 Spyder', manufacturer: 'Porsche', year: 2014, class: 'S2', pi: 955, drivetrain: 'AWD' },
-  2563: { name: 'LaFerrari', manufacturer: 'Ferrari', year: 2013, class: 'S2', pi: 960, drivetrain: 'RWD' },
-  2564: { name: 'Centenario LP 770-4', manufacturer: 'Lamborghini', year: 2016, class: 'S2', pi: 965, drivetrain: 'AWD' },
-  2565: { name: 'Mustang RTR Spec 5', manufacturer: 'Ford', year: 2021, class: 'S1', pi: 840, drivetrain: 'RWD' },
-  2566: { name: 'Bronco 4-Door', manufacturer: 'Ford', year: 2021, class: 'C', pi: 550, drivetrain: 'AWD' },
-};
+// Raw static dataset map (ordinal string -> full car name)
+export const FORZA_CARS: Record<string, string> = carsJson as Record<string, string>;
+
+/**
+ * Robust, offline vehicle lookup by Forza telemetry ordinal ID.
+ * Handles:
+ * - known ordinals (number or string)
+ * - unknown ordinals -> returns "Unknown Vehicle"
+ * - string vs number formats
+ * - null / undefined / NaN / zero / negative ordinals
+ */
+export function getCarByOrdinal(ordinal: number | string | null | undefined): string {
+  if (ordinal === null || ordinal === undefined) {
+    return 'Unknown Vehicle';
+  }
+
+  const num = typeof ordinal === 'number' ? ordinal : parseInt(String(ordinal).trim(), 10);
+  if (isNaN(num) || num <= 0) {
+    return 'Unknown Vehicle';
+  }
+
+  const key = String(num);
+  if (FORZA_CARS[key]) {
+    return FORZA_CARS[key];
+  }
+
+  return 'Unknown Vehicle';
+}
+
+const KNOWN_MANUFACTURERS = [
+  'Mercedes-AMG', 'Mercedes-Benz', 'Alfa Romeo', 'Aston Martin', 'Austin-Healey',
+  'De Tomaso', 'Ford Supervan', 'Formula Drift', 'Hot Wheels', 'Hennessey',
+  'Lamborghini', 'Land Rover', 'Maserati', 'McLaren', 'Mitsubishi',
+  'Plymouth', 'Pontiac', 'Porsche', 'Renault', 'Rolls-Royce', 'Shelby',
+  'Subaru', 'Toyota', 'Vauxhall', 'Volkswagen', 'Acura', 'Alpine', 'Apollo',
+  'Ariel', 'Audi', 'Austin', 'Auto Union', 'BAC', 'Bentley', 'BMW', 'Brabham',
+  'Bugatti', 'Buick', 'Cadillac', 'Caterham', 'Chevrolet', 'Chrysler', 'Citroën',
+  'Datsun', 'Dodge', 'Donkervoort', 'Eagle', 'Ferrari', 'Fiat', 'Ford',
+  'GMC', 'Gordon Murray Automotive', 'HDT', 'Holden', 'Honda', 'HSV', 'Hummer',
+  'Hyundai', 'Infiniti', 'International', 'Italdesign', 'Jaguar', 'Jeep',
+  'Kia', 'Koenigsegg', 'KTM', 'Lada', 'Lancia', 'Lexus', 'Lincoln', 'Local Motors',
+  'Lola', 'Lotus', 'Lucid', 'Lynk & Co', 'Mazda', 'Meyers', 'MG', 'MINI',
+  'Morgan', 'Morris', 'Mosler', 'NIO', 'Nissan', 'Noble', 'Oldsmobile', 'Opel',
+  'Pagani', 'Peugeot', 'Polaris', 'Radical', 'RAM', 'Reliant', 'Rimac', 'Rivian',
+  'Saleen', 'Schuppan', 'Sierra Cars', 'Spania GTA', 'Spyker', 'SRT', 'Subaru',
+  'Sunbeam', 'Talbot', 'Tamo', 'Tesla', 'Toyota', 'TVR', 'Ultima', 'Vauxhall',
+  'Vector', 'Venturi', 'Viper', 'Volkswagen', 'Volvo', 'VUHL', 'W Motors', 'Zenvo'
+];
+
+export function parseCarNameDetails(fullName: string): { manufacturer: string; name: string; year: number } {
+  const matchYear = fullName.match(/^(\d{4})\s+(.*)$/);
+  let year = 2024;
+  let rest = fullName;
+  if (matchYear) {
+    year = parseInt(matchYear[1], 10);
+    rest = matchYear[2];
+  }
+
+  let manufacturer = 'Forza Garage';
+  let name = rest;
+
+  for (const mfg of KNOWN_MANUFACTURERS) {
+    if (rest.toLowerCase().startsWith(mfg.toLowerCase() + ' ') || rest.toLowerCase() === mfg.toLowerCase()) {
+      manufacturer = mfg;
+      const model = rest.slice(mfg.length).trim();
+      name = model ? `${mfg} ${model}` : mfg;
+      break;
+    }
+  }
+
+  if (manufacturer === 'Forza Garage') {
+    const parts = rest.split(' ');
+    manufacturer = parts[0] || 'Forza Garage';
+    name = rest;
+  }
+
+  return { manufacturer, name, year };
+}
 
 export function getCustomCars(): Record<number, CarData> {
   try {
@@ -66,10 +118,13 @@ export function saveCustomCar(ordinal: number, data: Partial<CarData>) {
   try {
     if (!ordinal || ordinal <= 0) return;
     const existing = getCustomCars();
-    const prev = existing[ordinal] || KNOWN_CARS[ordinal] || {
-      name: `Vehicle Ordinal #${ordinal}`,
-      manufacturer: 'Forza Garage',
-      year: 2024,
+    const carName = getCarByOrdinal(ordinal);
+    const parsed = parseCarNameDetails(carName);
+    
+    const prev = existing[ordinal] || {
+      name: carName !== 'Unknown Vehicle' ? parsed.name : `Vehicle Ordinal #${ordinal}`,
+      manufacturer: carName !== 'Unknown Vehicle' ? parsed.manufacturer : 'Forza Garage',
+      year: carName !== 'Unknown Vehicle' ? parsed.year : 2024,
       class: 'S1',
       pi: 900,
       drivetrain: 'RWD',
@@ -91,27 +146,49 @@ export function saveCustomCar(ordinal: number, data: Partial<CarData>) {
   }
 }
 
-export function getCarInfo(ordinal: number, fallbackClass: string = 'S1', fallbackPi: number = 900): CarData {
+export function getCarInfo(
+  ordinal: number | string | null | undefined, 
+  fallbackClass: string = 'S1', 
+  fallbackPi: number = 900,
+  fallbackDrivetrain: string = 'RWD'
+): CarData {
+  const numOrdinal = typeof ordinal === 'number' ? ordinal : parseInt(String(ordinal || 0), 10);
   const customCars = getCustomCars();
-  if (ordinal && customCars[ordinal]) {
+  
+  if (numOrdinal > 0 && customCars[numOrdinal]) {
     return {
-      ...customCars[ordinal],
-      build: customCars[ordinal].build || DEFAULT_BUILD,
+      ...customCars[numOrdinal],
+      class: fallbackClass || customCars[numOrdinal].class || 'S1',
+      pi: fallbackPi || customCars[numOrdinal].pi || 900,
+      build: customCars[numOrdinal].build || DEFAULT_BUILD,
     };
   }
-  if (ordinal && KNOWN_CARS[ordinal]) {
+
+  const dt = (fallbackDrivetrain === 'FWD' || fallbackDrivetrain === 'AWD' || fallbackDrivetrain === 'RWD') 
+    ? fallbackDrivetrain 
+    : 'RWD';
+
+  const fullCarName = getCarByOrdinal(numOrdinal);
+  if (fullCarName !== 'Unknown Vehicle') {
+    const parsed = parseCarNameDetails(fullCarName);
     return {
-      ...KNOWN_CARS[ordinal],
-      build: KNOWN_CARS[ordinal].build || DEFAULT_BUILD,
+      name: parsed.name,
+      manufacturer: parsed.manufacturer,
+      year: parsed.year,
+      class: fallbackClass || 'S1',
+      pi: fallbackPi || 900,
+      drivetrain: dt as any,
+      build: DEFAULT_BUILD,
     };
   }
+
   return {
-    name: ordinal > 0 ? `Car #${ordinal}` : 'Active Vehicle',
-    manufacturer: 'Forza Horizon',
+    name: numOrdinal > 0 ? `Car #${numOrdinal}` : 'Forza Horizon Vehicle',
+    manufacturer: 'Forza Garage',
     year: 2024,
     class: fallbackClass || 'S1',
     pi: fallbackPi || 900,
-    drivetrain: 'RWD',
+    drivetrain: dt as any,
     build: DEFAULT_BUILD,
   };
 }

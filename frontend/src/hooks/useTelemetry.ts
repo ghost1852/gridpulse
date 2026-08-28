@@ -58,6 +58,10 @@ export interface TelemetryData {
   best_lap: number;
   current_lap: number;
   last_lap: number;
+  current_race_time: number;
+  lap_number: number;
+  is_race_on: number;
+  distance_traveled: number;
   race_position: number;
   drivetrain_type: number;
   drivetrain_name: string;
@@ -183,6 +187,10 @@ function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
     best_lap: typeof raw.BestLap === 'number' ? raw.BestLap : (typeof raw.best_lap === 'number' ? raw.best_lap : 0),
     current_lap: typeof raw.CurrentLap === 'number' ? raw.CurrentLap : (typeof raw.current_lap === 'number' ? raw.current_lap : 0),
     last_lap: typeof raw.LastLap === 'number' ? raw.LastLap : (typeof raw.last_lap === 'number' ? raw.last_lap : 0),
+    current_race_time: typeof raw.CurrentRaceTime === 'number' ? raw.CurrentRaceTime : (typeof raw.current_race_time === 'number' ? raw.current_race_time : 0),
+    lap_number: typeof raw.LapNumber === 'number' ? raw.LapNumber : (typeof raw.lap_number === 'number' ? raw.lap_number : 0),
+    is_race_on: typeof raw.IsRaceOn === 'number' ? raw.IsRaceOn : (typeof raw.is_race_on === 'number' ? raw.is_race_on : 0),
+    distance_traveled: typeof raw.DistanceTraveled === 'number' ? raw.DistanceTraveled : (typeof raw.distance_traveled === 'number' ? raw.distance_traveled : 0),
     race_position: typeof raw.RacePosition === 'number' ? raw.RacePosition : (typeof raw.race_position === 'number' ? raw.race_position : 1),
     drivetrain_type: typeof raw.DrivetrainType === 'number' ? raw.DrivetrainType : (typeof raw.drivetrain_type === 'number' ? raw.drivetrain_type : 1),
     drivetrain_name: typeof raw.drivetrain_name === 'string' ? raw.drivetrain_name : 'RWD',

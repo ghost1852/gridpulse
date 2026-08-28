@@ -58,6 +58,8 @@ export function HudPage() {
     best_lap: 0, 
     current_lap: 0, 
     last_lap: 0,
+    current_race_time: 0,
+    lap_number: 0,
     race_position: 1, 
     drivetrain_type: 1,
     car_ordinal: 2544
@@ -134,6 +136,8 @@ export function HudPage() {
           currentLap={data.current_lap} 
           bestLap={data.best_lap} 
           lastLap={data.last_lap} 
+          currentRaceTime={data.current_race_time}
+          lapNumber={data.lap_number}
         />
 
         {/* Extra Bottom Clearance Buffer for Mobile Bottom Nav */}
@@ -205,6 +209,8 @@ export function HudPage() {
                 currentLap={data.current_lap} 
                 bestLap={data.best_lap} 
                 lastLap={data.last_lap} 
+                currentRaceTime={data.current_race_time}
+                lapNumber={data.lap_number}
               />
             </div>
           </div>
