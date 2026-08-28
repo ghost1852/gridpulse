@@ -104,21 +104,21 @@ export function TractionDynamics({
   const isBottoming = suspFl < 0.04 || suspFr < 0.04 || suspRl < 0.04 || suspRr < 0.04;
 
   return (
-    <Card className="p-3 bg-[#0e0e16]/90 border-white/10 space-y-3">
+    <Card className="p-2 sm:p-3 landscape:p-2 bg-[#0e0e16]/90 border-white/10 space-y-1.5 sm:space-y-2">
       {/* Top Header: Handling Dynamics & Traction */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-gray-300">
+        <div className="flex items-center gap-1.5 text-[11px] sm:text-xs font-mono font-bold text-gray-300">
           <ArrowLeftRight size={13} className="text-cyan-400" />
           <span>CHASSIS BALANCE</span>
         </div>
-        <div className="flex items-center gap-1.5 font-mono text-xs font-black">
+        <div className="flex items-center gap-1.5 font-mono text-[11px] sm:text-xs font-black">
           <span className={handlingState.color}>{handlingState.label}</span>
         </div>
       </div>
 
       {/* Understeer / Oversteer Dynamic Meter */}
-      <div className="space-y-1">
-        <div className="relative h-2 bg-black/60 rounded-full overflow-hidden border border-white/10">
+      <div className="space-y-0.5">
+        <div className="relative h-1.5 sm:h-2 bg-black/60 rounded-full overflow-hidden border border-white/10">
           {/* Center line */}
           <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-white/30 z-10 -translate-x-1/2" />
           {/* Indicator cursor */}
@@ -130,7 +130,7 @@ export function TractionDynamics({
             }}
           />
         </div>
-        <div className="flex justify-between text-[9px] font-mono font-bold text-gray-500">
+        <div className="flex justify-between text-[8px] sm:text-[9px] font-mono font-bold text-gray-500">
           <span className="text-amber-400/80">◄ UNDERSTEER (PUSH)</span>
           <span className="text-emerald-400/80">BALANCED</span>
           <span className="text-cyan-400/80">OVERSTEER (SLIP) ►</span>

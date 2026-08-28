@@ -176,9 +176,9 @@ export function HudPage() {
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. HORIZONTAL LANDSCAPE COCKPIT MODE: High Density Motorsport Grid       */}
+      {/* 2. HORIZONTAL LANDSCAPE COCKPIT MODE: Balanced Full-Width Cockpit Grid   */}
       {/* ========================================================================= */}
-      <div className="hidden landscape:flex flex-col justify-start p-2 gap-2 pb-16 overflow-y-auto">
+      <div className="hidden landscape:flex flex-col justify-between p-2 sm:p-3 gap-2 h-full overflow-y-auto max-h-screen">
         {/* Top Slim Header */}
         <div className="flex items-center justify-between gap-2 shrink-0">
           <div className="flex-1">
@@ -194,16 +194,16 @@ export function HudPage() {
           <button
             onClick={toggleFullscreen}
             title="Toggle Cockpit Fullscreen"
-            className="p-2 rounded-xl bg-black/40 border border-white/10 hover:border-emerald-400/50 text-gray-400 hover:text-white transition-colors cursor-pointer shrink-0"
+            className="p-1.5 rounded-xl bg-black/40 border border-white/10 hover:border-emerald-400/50 text-gray-400 hover:text-white transition-colors cursor-pointer shrink-0"
           >
             {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
           </button>
         </div>
 
-        {/* 3-Column Responsive Grid */}
-        <div className="grid grid-cols-12 gap-2 items-stretch min-h-0">
+        {/* Top Row: 3-Column Gauges (Tires & Laps | Speed & Pedals | G-Force) */}
+        <div className="grid grid-cols-12 gap-2 items-stretch flex-1 min-h-0">
           {/* Left: Tires & Center Lap Timer (col 5) */}
-          <div className="col-span-5 flex flex-col justify-between">
+          <div className="col-span-5 flex flex-col justify-center">
             <TireTemps 
               fl={data.tire_temp_fl} fr={data.tire_temp_fr} 
               rl={data.tire_temp_rl} rr={data.tire_temp_rr} 
@@ -238,32 +238,36 @@ export function HudPage() {
             />
           </div>
 
-          {/* Right: G-Force Circle + Dynamics (col 3) */}
-          <div className="col-span-3 flex flex-col justify-between gap-1.5">
+          {/* Right: G-Force Circle (col 3) */}
+          <div className="col-span-3 flex flex-col justify-center">
             <GForceCircle accelX={data.acceleration_x} accelZ={data.acceleration_z} />
-            <TractionDynamics
-              slipAngleFl={data.slip_angle_fl}
-              slipAngleFr={data.slip_angle_fr}
-              slipAngleRl={data.slip_angle_rl}
-              slipAngleRr={data.slip_angle_rr}
-              slipRatioFl={data.slip_ratio_fl}
-              slipRatioFr={data.slip_ratio_fr}
-              slipRatioRl={data.slip_ratio_rl}
-              slipRatioRr={data.slip_ratio_rr}
-              tireTempFl={data.tire_temp_fl}
-              tireTempFr={data.tire_temp_fr}
-              tireTempRl={data.tire_temp_rl}
-              tireTempRr={data.tire_temp_rr}
-              accelX={data.acceleration_x}
-              accelZ={data.acceleration_z}
-              throttle={data.accel}
-              brake={data.brake}
-              suspFl={data.susp_fl}
-              suspFr={data.susp_fr}
-              suspRl={data.susp_rl}
-              suspRr={data.susp_rr}
-            />
           </div>
+        </div>
+
+        {/* Bottom Row: Full-Width Chassis Balance & Dynamic Traction Ribbon */}
+        <div className="w-full shrink-0">
+          <TractionDynamics
+            slipAngleFl={data.slip_angle_fl}
+            slipAngleFr={data.slip_angle_fr}
+            slipAngleRl={data.slip_angle_rl}
+            slipAngleRr={data.slip_angle_rr}
+            slipRatioFl={data.slip_ratio_fl}
+            slipRatioFr={data.slip_ratio_fr}
+            slipRatioRl={data.slip_ratio_rl}
+            slipRatioRr={data.slip_ratio_rr}
+            tireTempFl={data.tire_temp_fl}
+            tireTempFr={data.tire_temp_fr}
+            tireTempRl={data.tire_temp_rl}
+            tireTempRr={data.tire_temp_rr}
+            accelX={data.acceleration_x}
+            accelZ={data.acceleration_z}
+            throttle={data.accel}
+            brake={data.brake}
+            suspFl={data.susp_fl}
+            suspFr={data.susp_fr}
+            suspRl={data.susp_rl}
+            suspRr={data.susp_rr}
+          />
         </div>
       </div>
     </div>
