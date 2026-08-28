@@ -4,6 +4,7 @@ import logging
 import argparse
 import time
 import socket
+import random
 from typing import Set, Dict, Any
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -15,11 +16,12 @@ from packet_parser import parse_packet
 from analytics import TelemetryAnalytics
 import database
 from simulator import TelemetrySimulator
+from webrtc_host import WebRtcHost
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("GridPulse")
 
-app = FastAPI(title="GridPulse Telemetry Engine", version="2.0.0")
+app = FastAPI(title="GridPulse Telemetry Engine", version="2.1.0")
 
 # Security Hardened CORS (permits localhost, LAN, and Wranglr edge deployments)
 app.add_middleware(
@@ -32,6 +34,10 @@ app.add_middleware(
 
 analytics_engine = TelemetryAnalytics()
 active_connections: Set[WebSocket] = set()
+webrtc_engine = WebRtcHost()
+
+# 6-Digit Device Pairing Code
+PAIRING_CODE = f"{random.randint(100, 999)} {random.randint(100, 999)}"
 
 # Asynchronous non-blocking Database Queue
 db_queue: asyncio.Queue = asyncio.Queue()
@@ -108,15 +114,17 @@ async def process_and_broadcast(data: bytes, source: str = "udp"):
     for rec in records:
         db_queue.put_nowait(rec)
 
-    # Fast single-pass JSON serialization for all connected WebSockets
+    message = {
+        "telemetry": telemetry,
+        "analytics_state": result.get("state", {})
+    }
+    msg_str = json.dumps(message)
+
+    # 1. Broadcast via WebRTC DataChannel (Encrypted direct P2P)
+    webrtc_engine.broadcast(msg_str)
+
+    # 2. Broadcast via Local WebSockets
     if active_connections:
-        message = {
-            "telemetry": telemetry,
-            "analytics_state": result.get("state", {})
-        }
-        msg_str = json.dumps(message)
-        
-        # Broadcast concurrently
         dead_connections = []
         for conn in list(active_connections):
             try:
@@ -182,20 +190,22 @@ def get_lan_ip() -> str:
     return ip
 
 def print_terminal_banner(lan_ip: str, port: int, udp_port: int):
-    pairing_url = f"https://gridpulse.wranglr.co.za?bridge=http://{lan_ip}:{port}"
-    print("\n" + "=" * 58)
-    print("             GRIDPULSE TELEMETRY BRIDGE v2.0")
-    print("=" * 58)
+    clean_code = PAIRING_CODE.replace(" ", "")
+    pairing_url = f"https://gridpulse.wranglr.co.za?bridge=http://{lan_ip}:{port}&code={clean_code}"
+    print("\n" + "=" * 60)
+    print("             GRIDPULSE TELEMETRY BRIDGE v2.1")
+    print("=" * 60)
+    print(f" * PAIRING CODE          : {PAIRING_CODE}")
     print(f" * UDP Telemetry Ingress : 0.0.0.0:{udp_port}")
-    print(f" * Localhost Gateway     : http://127.0.0.1:{port}")
+    print(f" * WebRTC DataChannel    : ACTIVE (P2P Encrypted)")
     print(f" * LAN Gateway           : http://{lan_ip}:{port}")
-    print("=" * 58)
+    print("=" * 60)
     print(" FORZA IN-GAME SETUP (HUD & Gameplay > Telemetry):")
     print(f"   Data Out            : ON")
     print(f"   Data Out IP Address : 127.0.0.1 (or {lan_ip})")
     print(f"   Data Out IP Port    : {udp_port}")
-    print("=" * 58)
-    print(" SCAN WITH PHONE CAMERA TO OPEN DASHBOARD:")
+    print("=" * 60)
+    print(" SCAN WITH PHONE CAMERA TO AUTO-PAIR INSTANTLY:")
     try:
         import qrcode
         qr = qrcode.QRCode(box_size=1, border=1)
@@ -204,7 +214,7 @@ def print_terminal_banner(lan_ip: str, port: int, udp_port: int):
     except Exception:
         pass
     print(f" Direct Link: {pairing_url}")
-    print("=" * 58 + "\n")
+    print("=" * 60 + "\n")
 
 # =========================================================================
 # LIFECYCLE HOOKS
@@ -239,16 +249,32 @@ async def shutdown():
         runtime_state["udp_transport"].close()
     if runtime_state["db_worker_task"]:
         runtime_state["db_worker_task"].cancel()
+    await webrtc_engine.close_all()
 
 # =========================================================================
-# REST API ENDPOINTS
+# REST & WEBRTC API ENDPOINTS
 # =========================================================================
+@app.post("/api/webrtc/offer")
+async def webrtc_offer(payload: Dict[str, str]):
+    """WebRTC SDP offer negotiation endpoint."""
+    sdp = payload.get("sdp")
+    sdp_type = payload.get("type", "offer")
+    if not sdp:
+        raise HTTPException(status_code=400, detail="Missing SDP offer payload")
+    try:
+        answer = await webrtc_engine.handle_offer(sdp, sdp_type)
+        return answer
+    except Exception as e:
+        logger.error(f"WebRTC offer error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/status")
 async def get_status():
     """Rich 3-tier diagnostic status for the frontend."""
     is_receiving = (time.time() - stats["last_packet_time"]) < 2.0 if stats["last_packet_time"] > 0 else False
     return {
         "status": "online",
+        "pairing_code": PAIRING_CODE,
         "simulate_mode": CONFIG["simulate"],
         "udp_port": CONFIG["udp_port"],
         "udp_listening": stats["udp_listening"],
@@ -256,12 +282,14 @@ async def get_status():
         "packet_rate_hz": stats["packet_rate_hz"] if is_receiving or CONFIG["simulate"] else 0.0,
         "packets_received": stats["packets_received"],
         "last_car_ordinal": stats["last_car_ordinal"],
-        "active_clients": len(active_connections)
+        "active_clients": len(active_connections) + len(webrtc_engine.active_datachannels),
+        "webrtc_channels": len(webrtc_engine.active_datachannels)
     }
 
 @app.get("/api/config")
 async def get_config():
     return {
+        "pairing_code": PAIRING_CODE,
         "simulate": CONFIG["simulate"],
         "udp_port": CONFIG["udp_port"],
         "udp_listening": stats["udp_listening"],

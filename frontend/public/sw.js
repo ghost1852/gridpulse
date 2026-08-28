@@ -1,34 +1,54 @@
-const CACHE_NAME = 'gridpulse-v1';
-const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json'
-];
+const CACHE_NAME = 'gridpulse-v2';
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    })
+    caches.keys().then((keys) => {
+      return Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      );
+    }).then(() => clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
-  // Only cache GET requests
-  if (event.request.method !== 'GET') return;
-  // Skip cross-origin requests, like APIs and WebSockets
-  if (!event.request.url.startsWith(self.location.origin)) return;
+  const request = event.request;
 
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request).then((fetchRes) => {
-        return caches.open(CACHE_NAME).then((cache) => {
-          // Don't cache API or WS requests just in case
-          if (!event.request.url.includes('/api/') && !event.request.url.includes('/ws/')) {
-            cache.put(event.request, fetchRes.clone());
+  // Only handle GET
+  if (request.method !== 'GET') return;
+
+  // Ignore WebSockets & API calls
+  if (request.url.includes('/ws') || request.url.includes('/api/')) return;
+
+  // For HTML navigation requests, use Network First to avoid stale bundle hashes
+  if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
           }
-          return fetchRes;
-        });
+          return networkResponse;
+        })
+        .catch(() => caches.match(request).then((res) => res || caches.match('/index.html')))
+    );
+    return;
+  }
+
+  // For static assets (CSS, JS, images, fonts): Cache First with Network Fallback
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      if (cachedResponse) return cachedResponse;
+      return fetch(request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+        }
+        return networkResponse;
       });
     })
   );

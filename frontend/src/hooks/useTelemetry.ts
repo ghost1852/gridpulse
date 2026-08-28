@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { WebRtcTelemetryClient } from '../lib/webrtc';
+import { getApiBaseUrl } from '../lib/api';
 
 export interface TelemetryData {
   speed_mph: number;
@@ -115,58 +117,55 @@ function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
   const powerW = typeof raw.Power === 'number' ? raw.Power : 0;
   const torqueNm = typeof raw.Torque === 'number' ? raw.Torque : 0;
   const boost = typeof raw.Boost === 'number' ? raw.Boost : 0;
-  const fuel = typeof raw.Fuel === 'number' ? raw.Fuel : 1.0;
-  const steerRaw = typeof raw.Steer === 'number' ? raw.Steer : (typeof raw.steer === 'number' ? raw.steer : 0);
 
-  const velX = typeof raw.VelocityX === 'number' ? raw.VelocityX : 0;
-  const velY = typeof raw.VelocityY === 'number' ? raw.VelocityY : 0;
-  const velZ = typeof raw.VelocityZ === 'number' ? raw.VelocityZ : 0;
-  const angVelY = typeof raw.AngularVelocityY === 'number' ? raw.AngularVelocityY : 0;
+  const speedMph = typeof raw.speed_mph === 'number' ? raw.speed_mph : speed * 2.23694;
+  const speedKph = typeof raw.speed_kph === 'number' ? raw.speed_kph : speed * 3.6;
 
-  let driftAngle = 0;
-  if (speed > 4.0) {
-    const rawSlip = Math.atan2(Math.abs(velX), Math.abs(velZ)) * (180 / Math.PI);
-    driftAngle = Math.min(90, Math.round(rawSlip));
-  }
+  const velX = typeof raw.VelocityX === 'number' ? raw.VelocityX : (typeof raw.velocity_x === 'number' ? raw.velocity_x : 0);
+  const velZ = typeof raw.VelocityZ === 'number' ? raw.VelocityZ : (typeof raw.velocity_z === 'number' ? raw.velocity_z : 0);
+  const driftRad = Math.atan2(velX, velZ);
+  const driftDeg = driftRad * (180.0 / Math.PI);
+  const angVelY = typeof raw.AngularVelocityY === 'number' ? raw.AngularVelocityY : (typeof raw.angular_velocity_y === 'number' ? raw.angular_velocity_y : 0);
+  const yawRateDeg = angVelY * (180.0 / Math.PI);
 
   return {
-    speed_mph: typeof raw.speed_mph === 'number' ? raw.speed_mph : speed * 2.23694,
-    speed_kph: typeof raw.speed_kph === 'number' ? raw.speed_kph : speed * 3.6,
+    speed_mph: speedMph,
+    speed_kph: speedKph,
     current_engine_rpm: typeof raw.CurrentEngineRpm === 'number' ? raw.CurrentEngineRpm : (typeof raw.current_engine_rpm === 'number' ? raw.current_engine_rpm : 0),
-    engine_max_rpm: typeof raw.EngineMaxRpm === 'number' ? raw.EngineMaxRpm : (typeof raw.engine_max_rpm === 'number' ? raw.engine_max_rpm : 8000),
+    engine_max_rpm: typeof raw.EngineMaxRpm === 'number' ? raw.EngineMaxRpm : (typeof raw.engine_max_rpm === 'number' ? raw.engine_max_rpm : 8500),
     gear: typeof raw.Gear === 'number' ? raw.Gear : (typeof raw.gear === 'number' ? raw.gear : 0),
     accel: typeof raw.Accel === 'number' ? raw.Accel : (typeof raw.accel === 'number' ? raw.accel : 0),
     brake: typeof raw.Brake === 'number' ? raw.Brake : (typeof raw.brake === 'number' ? raw.brake : 0),
     clutch: typeof raw.Clutch === 'number' ? raw.Clutch : (typeof raw.clutch === 'number' ? raw.clutch : 0),
-    handbrake: typeof raw.HandBrake === 'number' ? raw.HandBrake : 0,
-    steer: steerRaw / 127.0,
+    handbrake: typeof raw.HandBrake === 'number' ? raw.HandBrake : (typeof raw.handbrake === 'number' ? raw.handbrake : 0),
+    steer: typeof raw.Steer === 'number' ? raw.Steer : (typeof raw.steer === 'number' ? raw.steer : 0),
     tire_temp_fl: typeof raw.TireTempFrontLeft === 'number' ? raw.TireTempFrontLeft : (typeof raw.tire_temp_fl === 'number' ? raw.tire_temp_fl : 100),
     tire_temp_fr: typeof raw.TireTempFrontRight === 'number' ? raw.TireTempFrontRight : (typeof raw.tire_temp_fr === 'number' ? raw.tire_temp_fr : 100),
     tire_temp_rl: typeof raw.TireTempRearLeft === 'number' ? raw.TireTempRearLeft : (typeof raw.tire_temp_rl === 'number' ? raw.tire_temp_rl : 100),
     tire_temp_rr: typeof raw.TireTempRearRight === 'number' ? raw.TireTempRearRight : (typeof raw.tire_temp_rr === 'number' ? raw.tire_temp_rr : 100),
-    tire_slip_fl: typeof raw.TireCombinedSlipFrontLeft === 'number' ? raw.TireCombinedSlipFrontLeft : (typeof raw.TireSlipRatioFrontLeft === 'number' ? Math.abs(raw.TireSlipRatioFrontLeft) : 0),
-    tire_slip_fr: typeof raw.TireCombinedSlipFrontRight === 'number' ? raw.TireCombinedSlipFrontRight : (typeof raw.TireSlipRatioFrontRight === 'number' ? Math.abs(raw.TireSlipRatioFrontRight) : 0),
-    tire_slip_rl: typeof raw.TireCombinedSlipRearLeft === 'number' ? raw.TireCombinedSlipRearLeft : (typeof raw.TireSlipRatioRearLeft === 'number' ? Math.abs(raw.TireSlipRatioRearLeft) : 0),
-    tire_slip_rr: typeof raw.TireCombinedSlipRearRight === 'number' ? raw.TireCombinedSlipRearRight : (typeof raw.TireSlipRatioRearRight === 'number' ? Math.abs(raw.TireSlipRatioRearRight) : 0),
-    susp_fl: typeof raw.NormalizedSuspensionTravelFrontLeft === 'number' ? raw.NormalizedSuspensionTravelFrontLeft : 0.5,
-    susp_fr: typeof raw.NormalizedSuspensionTravelFrontRight === 'number' ? raw.NormalizedSuspensionTravelFrontRight : 0.5,
-    susp_rl: typeof raw.NormalizedSuspensionTravelRearLeft === 'number' ? raw.NormalizedSuspensionTravelRearLeft : 0.5,
-    susp_rr: typeof raw.NormalizedSuspensionTravelRearRight === 'number' ? raw.NormalizedSuspensionTravelRearRight : 0.5,
-    power_hp: Math.max(0, Math.round(powerW * 0.00134102)),
-    torque_ftlb: Math.max(0, Math.round(torqueNm * 0.737562)),
-    boost_psi: Math.max(0, Number((boost * 14.5038).toFixed(1))),
-    fuel_pct: Math.round(fuel * 100),
+    tire_slip_fl: typeof raw.TireCombinedSlipFrontLeft === 'number' ? raw.TireCombinedSlipFrontLeft : (typeof raw.tire_slip_fl === 'number' ? raw.tire_slip_fl : 0),
+    tire_slip_fr: typeof raw.TireCombinedSlipFrontRight === 'number' ? raw.TireCombinedSlipFrontRight : (typeof raw.tire_slip_fr === 'number' ? raw.tire_slip_fr : 0),
+    tire_slip_rl: typeof raw.TireCombinedSlipRearLeft === 'number' ? raw.TireCombinedSlipRearLeft : (typeof raw.tire_slip_rl === 'number' ? raw.tire_slip_rl : 0),
+    tire_slip_rr: typeof raw.TireCombinedSlipRearRight === 'number' ? raw.TireCombinedSlipRearRight : (typeof raw.tire_slip_rr === 'number' ? raw.tire_slip_rr : 0),
+    susp_fl: typeof raw.NormalizedSuspensionTravelFrontLeft === 'number' ? raw.NormalizedSuspensionTravelFrontLeft : (typeof raw.susp_fl === 'number' ? raw.susp_fl : 0.5),
+    susp_fr: typeof raw.NormalizedSuspensionTravelFrontRight === 'number' ? raw.NormalizedSuspensionTravelFrontRight : (typeof raw.susp_fr === 'number' ? raw.susp_fr : 0.5),
+    susp_rl: typeof raw.NormalizedSuspensionTravelRearLeft === 'number' ? raw.NormalizedSuspensionTravelRearLeft : (typeof raw.susp_rl === 'number' ? raw.susp_rl : 0.5),
+    susp_rr: typeof raw.NormalizedSuspensionTravelRearRight === 'number' ? raw.NormalizedSuspensionTravelRearRight : (typeof raw.susp_rr === 'number' ? raw.susp_rr : 0.5),
+    power_hp: typeof raw.power_hp === 'number' ? raw.power_hp : powerW * 0.00134102,
+    torque_ftlb: typeof raw.torque_ftlb === 'number' ? raw.torque_ftlb : torqueNm * 0.737562,
+    boost_psi: typeof raw.boost_psi === 'number' ? raw.boost_psi : boost * 0.145038,
+    fuel_pct: typeof raw.Fuel === 'number' ? raw.Fuel * 100 : (typeof raw.fuel_pct === 'number' ? raw.fuel_pct : 100),
     acceleration_x: typeof raw.AccelerationX === 'number' ? raw.AccelerationX : (typeof raw.acceleration_x === 'number' ? raw.acceleration_x : 0),
-    acceleration_y: typeof raw.AccelerationY === 'number' ? raw.AccelerationY : 0,
+    acceleration_y: typeof raw.AccelerationY === 'number' ? raw.AccelerationY : (typeof raw.acceleration_y === 'number' ? raw.acceleration_y : 0),
     acceleration_z: typeof raw.AccelerationZ === 'number' ? raw.AccelerationZ : (typeof raw.acceleration_z === 'number' ? raw.acceleration_z : 0),
     velocity_x: velX,
-    velocity_y: velY,
+    velocity_y: typeof raw.VelocityY === 'number' ? raw.VelocityY : (typeof raw.velocity_y === 'number' ? raw.velocity_y : 0),
     velocity_z: velZ,
-    yaw: typeof raw.Yaw === 'number' ? raw.Yaw : 0,
-    pitch: typeof raw.Pitch === 'number' ? raw.Pitch : 0,
-    roll: typeof raw.Roll === 'number' ? raw.Roll : 0,
-    drift_angle: driftAngle,
-    yaw_rate_degs: Math.round(angVelY * (180 / Math.PI)),
+    yaw: typeof raw.Yaw === 'number' ? raw.Yaw : (typeof raw.yaw === 'number' ? raw.yaw : 0),
+    pitch: typeof raw.Pitch === 'number' ? raw.Pitch : (typeof raw.pitch === 'number' ? raw.pitch : 0),
+    roll: typeof raw.Roll === 'number' ? raw.Roll : (typeof raw.roll === 'number' ? raw.roll : 0),
+    drift_angle: driftDeg,
+    yaw_rate_degs: yawRateDeg,
     surface_rumble_fl: typeof raw.SurfaceRumbleFrontLeft === 'number' ? raw.SurfaceRumbleFrontLeft : 0,
     surface_rumble_fr: typeof raw.SurfaceRumbleFrontRight === 'number' ? raw.SurfaceRumbleFrontRight : 0,
     surface_rumble_rl: typeof raw.SurfaceRumbleRearLeft === 'number' ? raw.SurfaceRumbleRearLeft : 0,
@@ -196,74 +195,125 @@ export function useTelemetry() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [transport, setTransport] = useState<'webrtc' | 'websocket'>('websocket');
+  
   const wsRef = useRef<WebSocket | null>(null);
+  const webrtcClientRef = useRef<WebRtcTelemetryClient | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reconnectAttemptsRef = useRef(0);
 
+  const handleIncomingTelemetry = (data: any) => {
+    if (data.telemetry) {
+      setTelemetry(normalizeTelemetry(data.telemetry));
+    } else if (data.type === 'telemetry' && data.payload) {
+      setTelemetry(normalizeTelemetry(data.payload));
+    }
+
+    if (data.analytics_state) {
+      setAnalytics(data.analytics_state);
+    } else if (data.type === 'analytics' && data.payload) {
+      setAnalytics(data.payload);
+    }
+  };
+
   useEffect(() => {
     const connect = () => {
+      const apiBase = getApiBaseUrl();
       const wsUrl = getTelemetryWsUrl();
 
-      try {
-        wsRef.current = new WebSocket(wsUrl);
-
-        wsRef.current.onopen = () => {
-          setConnected(true);
-          setReconnecting(false);
-          reconnectAttemptsRef.current = 0;
-        };
-
-        wsRef.current.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.telemetry) {
-              setTelemetry(normalizeTelemetry(data.telemetry));
-            } else if (data.type === 'telemetry' && data.payload) {
-              setTelemetry(normalizeTelemetry(data.payload));
-            }
-
-            if (data.analytics_state) {
-              setAnalytics(data.analytics_state);
-            } else if (data.type === 'analytics' && data.payload) {
-              setAnalytics(data.payload);
-            }
-          } catch (e) {
-            console.error('Error parsing telemetry data:', e);
+      // 1. Attempt High-Speed WebRTC DataChannel First
+      if (typeof RTCPeerConnection !== 'undefined' && apiBase) {
+        try {
+          if (webrtcClientRef.current) {
+            webrtcClientRef.current.cleanup();
           }
-        };
 
-        wsRef.current.onclose = () => {
+          webrtcClientRef.current = new WebRtcTelemetryClient({
+            bridgeUrl: apiBase,
+            onTelemetry: (payload) => {
+              setConnected(true);
+              setReconnecting(false);
+              setTransport('webrtc');
+              handleIncomingTelemetry(payload);
+            },
+            onStateChange: (state) => {
+              if (state === 'channel_open' || state === 'connected') {
+                setConnected(true);
+                setReconnecting(false);
+                setTransport('webrtc');
+              } else if (state === 'failed' || state === 'error') {
+                // Fallback to WebSocket
+                fallbackToWebSocket();
+              }
+            }
+          });
+
+          webrtcClientRef.current.connect().catch(() => {
+            fallbackToWebSocket();
+          });
+        } catch {
+          fallbackToWebSocket();
+        }
+      } else {
+        fallbackToWebSocket();
+      }
+
+      function fallbackToWebSocket() {
+        try {
+          if (wsRef.current) {
+            wsRef.current.close();
+          }
+
+          wsRef.current = new WebSocket(wsUrl);
+
+          wsRef.current.onopen = () => {
+            setConnected(true);
+            setReconnecting(false);
+            setTransport('websocket');
+            reconnectAttemptsRef.current = 0;
+          };
+
+          wsRef.current.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              handleIncomingTelemetry(data);
+            } catch (e) {
+              console.error('Error parsing telemetry data:', e);
+            }
+          };
+
+          wsRef.current.onclose = () => {
+            setConnected(false);
+            setReconnecting(true);
+            
+            const baseDelay = 1000;
+            const maxDelay = 8000;
+            const attempts = reconnectAttemptsRef.current;
+            const delay = Math.min(baseDelay * Math.pow(1.5, attempts), maxDelay);
+            
+            reconnectAttemptsRef.current += 1;
+            
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect();
+            }, delay);
+          };
+
+          wsRef.current.onerror = () => {
+            wsRef.current?.close();
+          };
+        } catch (err) {
+          console.error('WebSocket connection error:', err);
           setConnected(false);
           setReconnecting(true);
-          
-          const baseDelay = 1000;
-          const maxDelay = 8000;
-          const attempts = reconnectAttemptsRef.current;
-          const delay = Math.min(baseDelay * Math.pow(1.5, attempts), maxDelay);
-          
-          reconnectAttemptsRef.current += 1;
-          
-          reconnectTimeoutRef.current = setTimeout(() => {
-            connect();
-          }, delay);
-        };
-
-        wsRef.current.onerror = () => {
-          wsRef.current?.close();
-        };
-      } catch (err) {
-        console.error('WebSocket connection error:', err);
-        setConnected(false);
-        setReconnecting(true);
+        }
       }
     };
 
     connect();
 
     const handleHostChange = () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      if (webrtcClientRef.current) webrtcClientRef.current.cleanup();
+      if (wsRef.current) wsRef.current.close();
       connect();
     };
 
@@ -274,11 +324,14 @@ export function useTelemetry() {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      if (webrtcClientRef.current) {
+        webrtcClientRef.current.cleanup();
+      }
       if (wsRef.current) {
         wsRef.current.close();
       }
     };
   }, []);
 
-  return { telemetry, analytics, connected, reconnecting };
+  return { telemetry, analytics, connected, reconnecting, transport };
 }

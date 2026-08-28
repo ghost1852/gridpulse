@@ -4,12 +4,13 @@ import { TuningBenchPage } from './pages/TuningBenchPage';
 import { VehicleStatsPage } from './pages/VehicleStatsPage';
 import { DragStripPage } from './pages/DragStripPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { LandingPage } from './pages/LandingPage';
 import { useTelemetry } from './hooks/useTelemetry';
-import { Gauge, Wrench, Activity, Flag, Settings, Radio } from 'lucide-react';
+import { Gauge, Wrench, Activity, Flag, Settings, Radio, BookOpen, Download } from 'lucide-react';
 import { cn } from './lib/utils';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'hud' | 'tuning' | 'stats' | 'drag' | 'settings'>('hud');
+  const [activeTab, setActiveTab] = useState<'hud' | 'tuning' | 'stats' | 'drag' | 'guide' | 'settings'>('hud');
   const { connected } = useTelemetry();
 
   const tabs = [
@@ -17,6 +18,7 @@ export function App() {
     { id: 'tuning' as const, label: 'Tuning', icon: Wrench },
     { id: 'stats' as const, label: 'Vehicle', icon: Activity },
     { id: 'drag' as const, label: 'Drag', icon: Flag },
+    { id: 'guide' as const, label: 'Guide', icon: BookOpen },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
   ];
 
@@ -26,7 +28,10 @@ export function App() {
       <aside className="hidden lg:flex flex-col w-64 bg-[#111118] border-r border-white/5 shrink-0 z-40">
         {/* Brand */}
         <div className="p-5 flex items-center justify-between border-b border-white/5">
-          <div className="flex items-center gap-2.5">
+          <div 
+            onClick={() => setActiveTab('guide')}
+            className="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition-opacity"
+          >
             <div className="w-3 h-3 rounded-full bg-[var(--color-accent-primary)] shadow-[0_0_10px_#00ff88]" />
             <span className="font-mono font-black text-lg tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
               GRIDPULSE
@@ -59,9 +64,21 @@ export function App() {
           ))}
         </nav>
 
+        {/* Download Bridge CTA */}
+        <div className="p-3 border-t border-white/5">
+          <a
+            href="/downloads/GridPulse-Bridge-Windows.zip"
+            download="GridPulse-Bridge-Windows.zip"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-bold transition-all shadow-[0_0_15px_rgba(0,255,136,0.08)]"
+          >
+            <Download size={14} />
+            <span>Windows Bridge (.EXE)</span>
+          </a>
+        </div>
+
         {/* Desktop Footer Status */}
-        <div className="p-4 border-t border-white/5 text-[11px] font-mono text-gray-500">
-          <div>Status: <span className={connected ? "text-emerald-400" : "text-yellow-400"}>{connected ? "Receiving UDP" : "Waiting for stream"}</span></div>
+        <div className="p-3 border-t border-white/5 text-[11px] font-mono text-gray-500">
+          <div>Status: <span className={connected ? "text-emerald-400" : "text-yellow-400"}>{connected ? "Receiving 60Hz" : "Waiting for feed"}</span></div>
         </div>
       </aside>
 
@@ -93,6 +110,7 @@ export function App() {
         {activeTab === 'tuning' && <TuningBenchPage />}
         {activeTab === 'stats' && <VehicleStatsPage />}
         {activeTab === 'drag' && <DragStripPage />}
+        {activeTab === 'guide' && <LandingPage onOpenDashboard={() => setActiveTab('hud')} />}
         {activeTab === 'settings' && <SettingsPage />}
       </main>
 
@@ -109,7 +127,7 @@ export function App() {
               activeTab === tab.id ? "text-[var(--color-accent-primary)] font-bold" : "text-gray-400 active:text-gray-200"
             )}
           >
-            <tab.icon size={18} className={activeTab === tab.id ? "text-[var(--color-accent-primary)]" : "text-gray-400"} />
+            <tab.icon size={17} className={activeTab === tab.id ? "text-[var(--color-accent-primary)]" : "text-gray-400"} />
             <span className="text-[9px] font-mono tracking-tight">{tab.label.split(' ')[0]}</span>
           </button>
         ))}
