@@ -26,18 +26,19 @@ import {
 interface TuningCategory {
   id: 'tires' | 'arbs' | 'springs' | 'damping' | 'diff' | 'brakes' | 'aero';
   label: string;
+  shortLabel: string;
   Icon: LucideIcon;
   description: string;
 }
 
 const CATEGORIES: TuningCategory[] = [
-  { id: 'tires', label: 'Tires & Pressures', Icon: Disc, description: 'Thermal spread, grip thresholds & pressure balance' },
-  { id: 'arbs', label: 'Anti-Roll Bars (ARBs)', Icon: Compass, description: 'Mechanical grip, corner entry & mid-turn balance' },
-  { id: 'springs', label: 'Springs & Ride Height', Icon: Activity, description: 'Suspension travel, bottoming out & weight transfer' },
-  { id: 'damping', label: 'Damping & Shocks', Icon: Sliders, description: 'Rebound & bump compliance over curbs and transitions' },
-  { id: 'diff', label: 'Differential', Icon: Cpu, description: 'Inside wheelspin on exit & off-throttle turn-in rotation' },
-  { id: 'brakes', label: 'Brakes & Bias', Icon: CircleDot, description: 'Axle lockup prevention & threshold braking stability' },
-  { id: 'aero', label: 'Aerodynamics', Icon: Wind, description: 'High-speed downforce distribution & high-speed push' },
+  { id: 'tires', label: 'Tires & Pressures', shortLabel: 'Tires', Icon: Disc, description: 'Thermal spread, grip thresholds & pressure balance' },
+  { id: 'arbs', label: 'Anti-Roll Bars (ARBs)', shortLabel: 'ARBs', Icon: Compass, description: 'Mechanical grip, corner entry & mid-turn balance' },
+  { id: 'springs', label: 'Springs & Ride Height', shortLabel: 'Springs', Icon: Activity, description: 'Suspension travel, bottoming out & weight transfer' },
+  { id: 'damping', label: 'Damping & Shocks', shortLabel: 'Damping', Icon: Sliders, description: 'Rebound & bump compliance over curbs and transitions' },
+  { id: 'diff', label: 'Differential', shortLabel: 'Diff', Icon: Cpu, description: 'Inside wheelspin on exit & off-throttle turn-in rotation' },
+  { id: 'brakes', label: 'Brakes & Bias', shortLabel: 'Brakes', Icon: CircleDot, description: 'Axle lockup prevention & threshold braking stability' },
+  { id: 'aero', label: 'Aerodynamics', shortLabel: 'Aero', Icon: Wind, description: 'High-speed downforce distribution & high-speed push' },
 ];
 
 export function TuningBenchPage() {
@@ -138,115 +139,109 @@ export function TuningBenchPage() {
           target: 'Rear Anti-Roll Bar (ARB)',
           action: handlingDelta < -0.06 ? '▲ Stiffen Rear ARB by 4 – 8 points to promote rotation' : (handlingDelta > 0.10 ? '▼ Soften Rear ARB by 5 – 10 points to tame oversteer' : '✓ Rear roll stiffness is well matched to front'),
           reason: handlingDelta < -0.06 ? 'Car resists rotating onto line at corner apex.' : (handlingDelta > 0.10 ? 'Excessive rear slip angle observed under lateral G.' : 'Chassis rotates cleanly.'),
-          badge: handlingDelta > 0.10 ? 'OVERSTEER' : (handlingDelta < -0.06 ? 'UNDERSTEER' : 'BALANCED'),
-          severity: Math.abs(handlingDelta) > 0.07 ? 'warning' : 'good'
+          badge: handlingDelta > 0.10 ? 'OVERSTEER' : (handlingDelta < -0.06 ? 'NEEDS ROTATION' : 'BALANCED'),
+          severity: Math.abs(handlingDelta) > 0.08 ? 'warning' : 'good'
         }
       ],
       springs: [
         {
           direction: isBottoming ? 'INCREASE' : 'OPTIMAL',
-          target: 'Front & Rear Springs',
-          action: isBottoming ? '▲ Stiffen Springs by +50 – 100 N/mm or +30 – 50 lbs/in' : '✓ Spring rates provide adequate travel without bottoming',
-          reason: isBottoming ? 'Suspension reached 96%+ maximum travel (bump stop impact detected).' : `Minimum travel remaining is ${Math.round(minSusp * 100)}%.`,
-          badge: isBottoming ? 'BOTTOMING OUT' : 'NOMINAL TRAVEL',
+          target: 'Spring Rates & Ride Height',
+          action: isBottoming ? '▲ Stiffen Springs by 10% & Raise Ride Height by +0.5 cm' : '✓ Suspension stroke travel has adequate bump-stop clearance',
+          reason: isBottoming ? 'Suspension compressed past 96% travel (bottomed out on bump-stops).' : 'Suspension working within optimal stroke range.',
+          badge: isBottoming ? 'BOTTOMING OUT' : 'OPTIMAL STROKE',
           severity: isBottoming ? 'danger' : 'good'
         },
         {
-          direction: isBottoming ? 'INCREASE' : 'OPTIMAL',
-          target: 'Ride Height',
-          action: isBottoming ? '▲ Raise Ride Height by +0.5 – 1.0 cm (+0.2 – 0.4 in)' : '✓ Ground clearance is optimal for aerodynamic floor sealing',
-          reason: isBottoming ? 'Chassis is scraping curbs or track compression dips.' : 'No chassis scraping detected.',
-          badge: isBottoming ? 'RAISE CHASSIS' : 'OPTIMAL HEIGHT',
-          severity: isBottoming ? 'danger' : 'good'
+          direction: 'ADVISORY',
+          target: 'Weight Distribution Baseline',
+          action: `${car.drivetrain} setup target for ${build.tuningGoal.toUpperCase()}`,
+          reason: 'Set front springs slightly stiffer than rear on front-engine layouts to stabilize braking pitch.',
+          badge: 'GEOMETRY',
+          severity: 'info'
         }
       ],
       damping: [
         {
           direction: 'ADVISORY',
-          target: 'Front & Rear Rebound Damping',
-          action: 'Set Rebound stiffness to approximately 55 – 65% of max scale (e.g. 10.0 – 12.5)',
-          reason: 'Controls spring expansion after compression over curbs and braking dive.',
-          badge: 'REBOUND BALANCE',
+          target: 'Rebound Damping',
+          action: 'Set Rebound to ~60-65% of max slider value for high-speed body control',
+          reason: 'Prevents excessive chassis oscillation after curbing or rapid chicane transitions.',
+          badge: 'TRANSITIONS',
           severity: 'info'
         },
         {
           direction: 'ADVISORY',
-          target: 'Front & Rear Bump Damping',
-          action: 'Set Bump stiffness to 50 – 60% of Rebound stiffness (e.g. 5.5 – 7.5)',
-          reason: 'Prevents harsh deflection when hitting rumble strips or road crowns.',
-          badge: 'BUMP COMPLIANCE',
+          target: 'Bump Damping',
+          action: 'Set Bump to ~50-55% of your Rebound setting (approx 30-35% of slider)',
+          reason: 'Maintains tire contact compliance over rough track rumble strips.',
+          badge: 'COMPLIANCE',
           severity: 'info'
         }
       ],
       diff: [
         {
-          direction: hasRearWheelspin ? 'DECREASE' : 'OPTIMAL',
-          target: 'Rear Acceleration Lock (%)',
-          action: hasRearWheelspin ? '▼ Lower Rear Accel Lock by 5 – 10% (or ▲ Stiffen if one-wheel peeling)' : '✓ Rear differential lock delivers smooth exit traction',
-          reason: hasRearWheelspin ? 'Inside driven wheel is breaking traction under corner exit power.' : 'Power delivery is symmetrical.',
-          badge: hasRearWheelspin ? 'WHEELSPIN' : 'TRACTION LOCKED',
+          direction: hasRearWheelspin ? 'INCREASE' : 'OPTIMAL',
+          target: 'Rear Acceleration Lock',
+          action: hasRearWheelspin ? '▲ Increase Rear Acceleration Lock by +5 – 10% to lock rear axle' : '✓ Power delivery is balanced with rear traction',
+          reason: hasRearWheelspin ? 'Inside drive wheel is spinning up under full throttle exit.' : 'Differential lock is delivering smooth corner exit drive.',
+          badge: hasRearWheelspin ? 'WHEELSPIN' : 'OPTIMAL LOCK',
           severity: hasRearWheelspin ? 'warning' : 'good'
         },
         {
           direction: handlingDelta < -0.06 ? 'DECREASE' : 'OPTIMAL',
-          target: 'Rear Deceleration Lock (%)',
-          action: handlingDelta < -0.06 ? '▼ Lower Rear Decel Lock to 0% – 15% (Allows car to pivot off-throttle)' : '✓ Decel lock provides stable entry without push',
-          reason: 'High decel locking forces wheels to turn at same speed off-throttle, causing entry push.',
-          badge: 'TURN-IN ROTATION',
+          target: 'Rear Deceleration Lock',
+          action: handlingDelta < -0.06 ? '▼ Lower Deceleration Lock by -5 – 10% to free up turn-in' : '✓ Trail-braking stability is confident',
+          reason: handlingDelta < -0.06 ? 'High deceleration lock is locking axle and forcing understeer off-throttle.' : 'Off-throttle balance is neutral.',
+          badge: handlingDelta < -0.06 ? 'TURN-IN DRAG' : 'STABLE',
           severity: handlingDelta < -0.06 ? 'warning' : 'good'
         }
       ],
       brakes: [
         {
-          direction: hasFrontLockup ? 'SHIFT REARWARD' : 'OPTIMAL',
-          target: 'Brake Balance (% Front)',
-          action: hasFrontLockup ? '◄ Shift Brake Bias 2 – 4% Rearward (e.g. from 52% down to 48% Front)' : '✓ Brake balance decelerates all 4 wheels evenly',
-          reason: hasFrontLockup ? 'Front axle is locking up before rear, causing loss of steering control.' : 'Threshold braking is stable.',
+          direction: hasFrontLockup ? 'DECREASE' : 'OPTIMAL',
+          target: 'Brake Balance Bias',
+          action: hasFrontLockup ? '▼ Shift Brake Bias Rearward by 1 – 3% (e.g. 52% -> 50%)' : '✓ Brake balance distributes stopping force evenly',
+          reason: hasFrontLockup ? 'Front tires locked up before rear tires reached braking limit.' : 'All 4 tires reaching deceleration peak simultaneously.',
           badge: hasFrontLockup ? 'FRONT LOCKUP' : 'BALANCED BIAS',
-          severity: hasFrontLockup ? 'danger' : 'good'
+          severity: hasFrontLockup ? 'warning' : 'good'
         },
         {
           direction: 'ADVISORY',
-          target: 'Brake Pressure (%)',
-          action: 'Set Brake Pressure between 90% – 100% (Avoid 130%+ to prevent instant lockup)',
-          reason: 'Provides a progressive pedal threshold for trail-braking into corner apex.',
-          badge: 'PEDAL MODULATION',
+          target: 'Brake Pressure',
+          action: '100% – 110% Pressure recommended with ABS OFF',
+          reason: 'Gives maximum pedal modulation resolution before threshold lockup.',
+          badge: 'PRESSURE',
           severity: 'info'
         }
       ],
       aero: [
         {
-          direction: handlingDelta < -0.06 ? 'INCREASE FRONT' : 'OPTIMAL',
-          target: 'Front Downforce Wing',
-          action: handlingDelta < -0.06 ? '▲ Increase Front Downforce (+15 – 30 KGF / LBS)' : '✓ Aerodynamic balance is matched to chassis speed',
-          reason: 'Increases high-speed front front grip (>80 mph / 130 km/h) in fast sweepers.',
-          badge: 'HIGH-SPEED GRIP',
-          severity: 'info'
-        },
-        {
           direction: 'ADVISORY',
-          target: 'Rear Downforce Wing',
-          action: 'Adjust Rear Wing to balance high-speed stability against straight-line top speed drag',
-          reason: 'Higher rear aero stabilizes high-speed braking at the cost of 2-5 mph top speed.',
-          badge: 'TOP SPEED VS GRIP',
+          target: 'Front vs Rear Downforce Balance',
+          action: build.aeroType === 'full' ? 'Increase Front Downforce to cure high-speed understeer' : 'Install adjustable race aero for high-speed stability',
+          reason: 'Aerodynamic balance dominates cornering behavior above 90 MPH (145 KM/H).',
+          badge: build.aeroType === 'full' ? 'AERO TUNABLE' : 'STOCK AERO',
           severity: 'info'
         }
       ]
     };
-  }, [tempDelta, frontTempAvg, rearTempAvg, handlingDelta, isBottoming, minSusp, hasRearWheelspin, hasFrontLockup, build, convertTemp]);
+  }, [frontTempAvg, rearTempAvg, tempDelta, handlingDelta, isBottoming, hasRearWheelspin, hasFrontLockup, build, convertTemp, car.drivetrain]);
 
   const copyAdvisories = () => {
-    let text = `GRIDPULSE TELEMETRY TUNING ADVISORY\nVehicle: ${car.name} (${car.manufacturer})\nClass: ${car.class} (PI ${car.pi}) | Drivetrain: ${car.drivetrain}\nGoal: ${build.tuningGoal.toUpperCase()} | Compound: ${build.tireCompound.toUpperCase()}\n\n`;
-    
+    let guide = `### GridPulse Mechanical Setup Guide\n`;
+    guide += `**Vehicle**: ${car.name} (${car.class} ${car.pi} - ${car.drivetrain})\n`;
+    guide += `**Build**: ${build.tireCompound.toUpperCase()} Tires | ${build.tuningGoal.toUpperCase()} Goal\n\n`;
+
     Object.entries(advisories).forEach(([cat, list]) => {
-      text += `[${cat.toUpperCase()}]\n`;
+      guide += `#### ${cat.toUpperCase()}\n`;
       list.forEach(item => {
-        text += `• ${item.target}: ${item.action} (${item.reason})\n`;
+        guide += `- **${item.target}**: ${item.action}\n  *Reason: ${item.reason}*\n`;
       });
-      text += '\n';
+      guide += `\n`;
     });
 
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(guide);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -254,42 +249,42 @@ export function TuningBenchPage() {
   const activeList = advisories[activeCategory] || [];
 
   return (
-    <div className="p-3 sm:p-4 max-w-5xl mx-auto space-y-4 pb-28">
+    <div className="p-2.5 sm:p-4 max-w-5xl w-full mx-auto space-y-3 pb-32 overflow-x-hidden">
       {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#11111a] border border-white/10 rounded-2xl p-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-[#11111a] border border-white/10 rounded-2xl p-3 sm:p-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black font-mono text-white tracking-wider flex items-center gap-2">
-              <Wrench size={20} className="text-emerald-400" />
+            <h1 className="text-base sm:text-xl font-black font-mono text-white tracking-wider flex items-center gap-2">
+              <Wrench size={18} className="text-emerald-400 shrink-0" />
               TELEMETRY TUNING ADVISOR
             </h1>
-            <Badge carClass={car.class} className="text-xs">{car.class} {car.pi}</Badge>
+            <Badge carClass={car.class} className="text-[10px]">{car.class} {car.pi}</Badge>
           </div>
-          <p className="text-xs text-gray-400 font-mono mt-1">
+          <p className="text-[11px] sm:text-xs text-gray-400 font-mono mt-0.5">
             Real-time mechanical engineering advisories derived from live telemetry dynamics.
           </p>
         </div>
 
         <button
           onClick={copyAdvisories}
-          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 text-xs font-mono font-bold transition-all cursor-pointer shrink-0"
+          className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/30 text-[11px] sm:text-xs font-mono font-bold transition-all cursor-pointer shrink-0 self-start sm:self-auto"
         >
-          {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+          {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
           <span>{copied ? 'COPIED SETUP GUIDE' : 'COPY SETUP GUIDE'}</span>
         </button>
       </div>
 
-      {/* Vehicle Build Calibration Controls */}
-      <Card className="p-3 bg-[#0e0e16] border-white/10">
-        <div className="text-[11px] font-mono font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5">
-          <Sparkles size={12} className="text-cyan-400" />
+      {/* Vehicle Build Calibration Controls (Responsive Grid: 1 col on mobile, 3 cols on desktop) */}
+      <Card className="p-3 bg-[#0e0e16] border-white/10 space-y-2">
+        <div className="text-[10px] font-mono font-bold text-gray-400 uppercase flex items-center gap-1.5">
+          <Sparkles size={11} className="text-cyan-400" />
           <span>Vehicle Build Calibration</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {/* Tire Compound */}
           <div>
-            <label className="text-[10px] font-mono text-gray-400 block mb-1">TIRE COMPOUND</label>
+            <label className="text-[9px] font-mono text-gray-400 block mb-0.5">TIRE COMPOUND</label>
             <select
               value={build.tireCompound}
               onChange={(e) => handleBuildChange({ tireCompound: e.target.value as any })}
@@ -309,14 +304,14 @@ export function TuningBenchPage() {
 
           {/* Tuning Goal */}
           <div>
-            <label className="text-[10px] font-mono text-gray-400 block mb-1">TUNING GOAL</label>
+            <label className="text-[9px] font-mono text-gray-400 block mb-0.5">TUNING GOAL</label>
             <select
               value={build.tuningGoal}
               onChange={(e) => handleBuildChange({ tuningGoal: e.target.value as any })}
               className="w-full bg-black/50 border border-white/10 rounded-lg p-1.5 text-xs font-mono font-bold text-cyan-400 focus:outline-none focus:border-cyan-400"
             >
               <option value="circuit">Circuit / Grip Racing</option>
-              <option value="drift">Drift / Angle & Smoke</option>
+              <option value="drift">Drift / Angle &amp; Smoke</option>
               <option value="touge">Touge / Mountain Agility</option>
               <option value="drag">Drag Strip Acceleration</option>
               <option value="rally">Rally / Dirt Surface</option>
@@ -325,14 +320,14 @@ export function TuningBenchPage() {
           </div>
 
           {/* Aero Package */}
-          <div className="col-span-2 sm:col-span-1">
-            <label className="text-[10px] font-mono text-gray-400 block mb-1">AERODYNAMICS</label>
+          <div>
+            <label className="text-[9px] font-mono text-gray-400 block mb-0.5">AERODYNAMICS</label>
             <select
               value={build.aeroType}
               onChange={(e) => handleBuildChange({ aeroType: e.target.value as any })}
               className="w-full bg-black/50 border border-white/10 rounded-lg p-1.5 text-xs font-mono font-bold text-amber-400 focus:outline-none focus:border-amber-400"
             >
-              <option value="full">Full Aero (Front Splitter + Rear Wing)</option>
+              <option value="full">Full Aero (Front + Rear)</option>
               <option value="rear_only">Rear Wing Only</option>
               <option value="none">No Adjustable Aero</option>
             </select>
@@ -340,8 +335,8 @@ export function TuningBenchPage() {
         </div>
       </Card>
 
-      {/* Category Selection Tabs */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+      {/* Category Selection Tabs (Wrap neatly on desktop, smooth horizontal scroll on mobile) */}
+      <div className="flex flex-wrap sm:flex-nowrap gap-1.5 overflow-x-auto pb-1 scrollbar-none">
         {CATEGORIES.map(cat => {
           const Icon = cat.Icon;
           const isActive = activeCategory === cat.id;
@@ -349,37 +344,37 @@ export function TuningBenchPage() {
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-mono font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 ${
                 isActive
                   ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20 font-black'
                   : 'bg-[#11111a] text-gray-400 hover:text-white border border-white/10 hover:border-white/20'
               }`}
             >
-              <Icon size={14} />
-              <span>{cat.label}</span>
+              <Icon size={13} className="shrink-0" />
+              <span>{cat.shortLabel}</span>
             </button>
           );
         })}
       </div>
 
       {/* Active Category Advisories Deck */}
-      <div className="space-y-3">
+      <div className="space-y-2.5">
         {activeList.map((item, idx) => (
-          <Card key={idx} className="p-4 bg-[#0e0e16] border-white/10 space-y-2">
+          <Card key={idx} className="p-3 sm:p-4 bg-[#0e0e16] border-white/10 space-y-2">
             <div className="flex items-start justify-between gap-2">
-              <div>
-                <span className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider block">
+              <div className="min-w-0 flex-1">
+                <span className="text-[9px] sm:text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider block truncate">
                   {item.target}
                 </span>
-                <h3 className="text-base sm:text-lg font-mono font-black text-white mt-0.5 flex items-center gap-1.5">
-                  {item.direction.includes('INCREASE') && <ArrowUp size={16} className="text-emerald-400" />}
-                  {item.direction.includes('DECREASE') && <ArrowDown size={16} className="text-amber-400" />}
-                  {item.direction.includes('OPTIMAL') && <CheckCircle2 size={16} className="text-emerald-400" />}
-                  <span>{item.action}</span>
+                <h3 className="text-xs sm:text-base font-mono font-black text-white mt-0.5 flex items-start gap-1.5 leading-snug break-words">
+                  {item.direction.includes('INCREASE') && <ArrowUp size={15} className="text-emerald-400 shrink-0 mt-0.5" />}
+                  {item.direction.includes('DECREASE') && <ArrowDown size={15} className="text-amber-400 shrink-0 mt-0.5" />}
+                  {item.direction.includes('OPTIMAL') && <CheckCircle2 size={15} className="text-emerald-400 shrink-0 mt-0.5" />}
+                  <span className="break-words">{item.action}</span>
                 </h3>
               </div>
 
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase shrink-0 ${
+              <span className={`px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-mono font-bold uppercase shrink-0 ${
                 item.severity === 'danger' ? 'bg-red-500/20 border border-red-500/40 text-red-300' :
                 item.severity === 'warning' ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300' :
                 item.severity === 'good' ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300' :
@@ -390,9 +385,9 @@ export function TuningBenchPage() {
             </div>
 
             {/* Diagnostic Reason */}
-            <div className="flex items-center gap-1.5 text-xs font-mono text-gray-400 bg-black/40 p-2.5 rounded-lg border border-white/5">
-              <Info size={13} className="text-cyan-400 shrink-0" />
-              <span>{item.reason}</span>
+            <div className="flex items-start gap-1.5 text-[11px] sm:text-xs font-mono text-gray-400 bg-black/40 p-2 sm:p-2.5 rounded-lg border border-white/5 leading-relaxed">
+              <Info size={12} className="text-cyan-400 shrink-0 mt-0.5" />
+              <span className="break-words">{item.reason}</span>
             </div>
           </Card>
         ))}
