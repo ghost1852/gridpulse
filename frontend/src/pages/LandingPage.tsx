@@ -64,8 +64,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             </button>
 
             <a
-              href="/downloads/GridPulse-Bridge-Windows.zip"
-              download="GridPulse-Bridge-Windows.zip"
+              href="https://github.com/ghost1852/gridpulse/releases/download/v2.1.0/GridPulse-Bridge-Windows.zip"
               className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-bold text-sm uppercase tracking-wider transition-all cursor-pointer hover:border-emerald-400"
             >
               <Download size={16} className="text-emerald-400" />
@@ -121,11 +120,10 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </div>
               <h3 className="font-bold text-white text-base">Run GridPulse Bridge</h3>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Download and unzip <strong>GridPulse-Bridge-Windows.zip</strong> from GitHub Releases on your gaming PC, then double-click <strong>GridPulse-Bridge.exe</strong>. No Python required!
+                Download and unzip <strong>GridPulse-Bridge-Windows.zip</strong> on your gaming PC, then double-click <strong>GridPulse-Bridge.exe</strong>. No Python required!
               </p>
               <a
-                href="/downloads/GridPulse-Bridge-Windows.zip"
-                download="GridPulse-Bridge-Windows.zip"
+                href="https://github.com/ghost1852/gridpulse/releases/download/v2.1.0/GridPulse-Bridge-Windows.zip"
                 className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-bold pt-1"
               >
                 <Download size={13} />
