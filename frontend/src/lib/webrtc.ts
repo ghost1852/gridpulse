@@ -113,8 +113,8 @@ export class WebRtcTelemetryClient {
       // Exchange SDP: Path A (Direct Local API) or Path B (Cloud Signaling Broker)
       let answerSdp: RTCSessionDescriptionInit;
 
-      if (this.bridgeUrl && (this.bridgeUrl.includes('localhost') || this.bridgeUrl.includes('127.0.0.1') || window.location.protocol === 'http:')) {
-        // Direct local HTTP signaling
+      if (window.location.protocol === 'http:' && this.bridgeUrl) {
+        // Direct local HTTP signaling on LAN
         const res = await fetch(`${this.bridgeUrl}/api/webrtc/offer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -122,18 +122,11 @@ export class WebRtcTelemetryClient {
         });
         if (!res.ok) throw new Error(`Bridge rejected offer: ${res.statusText}`);
         answerSdp = await res.json();
-      } else if (this.pairingCode) {
-        // Ephemeral Control Plane Signaling via room pairing code
-        answerSdp = await this.exchangeSignalingViaBroker(localSdp);
       } else {
-        // Fallback to direct fetch
-        const res = await fetch(`${this.bridgeUrl || 'http://localhost:8000'}/api/webrtc/offer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sdp: localSdp.sdp, type: localSdp.type })
-        });
-        if (!res.ok) throw new Error(`Bridge rejected offer: ${res.statusText}`);
-        answerSdp = await res.json();
+        // Ephemeral Control Plane Signaling via room pairing code
+        const activeCode = this.pairingCode || localStorage.getItem('gridpulse_pairing_code') || 'gridpulse-default';
+        this.pairingCode = activeCode;
+        answerSdp = await this.exchangeSignalingViaBroker(localSdp);
       }
 
       await this.pc.setRemoteDescription(new RTCSessionDescription(answerSdp));

@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { Card } from '../ui/Card';
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
-import { Zap, Gauge, Flame, Fuel } from 'lucide-react';
+import { Zap, Flame, Gauge } from 'lucide-react';
 
 interface SpeedometerProps {
   speedMph: number;
@@ -15,6 +15,8 @@ interface SpeedometerProps {
   torqueFtlb?: number;
   boostPsi?: number;
   fuelPct?: number;
+  throttle?: number;
+  brake?: number;
   connected?: boolean;
 }
 
@@ -28,6 +30,8 @@ export function Speedometer({
   torqueFtlb = 0,
   boostPsi = 0,
   fuelPct = 100,
+  throttle = 0,
+  brake = 0,
   connected = true 
 }: SpeedometerProps) {
   const [unit, setUnit] = useState<'MPH' | 'KPH'>('MPH');
@@ -56,9 +60,13 @@ export function Speedometer({
 
   const gearText = gear === 0 ? 'R' : gear > 0 ? String(gear) : 'N';
 
+  // Pedal percentages
+  const throttlePct = Math.round((Math.max(0, Math.min(255, throttle)) / 255) * 100);
+  const brakePct = Math.round((Math.max(0, Math.min(255, brake)) / 255) * 100);
+
   return (
     <Card className={cn(
-      "flex flex-col justify-between p-2.5 sm:p-4 landscape:p-2 relative min-h-[160px] sm:min-h-[220px] landscape:min-h-[140px] overflow-hidden transition-all duration-300 bg-[#0d0d14]",
+      "flex flex-col justify-between p-2.5 sm:p-3 relative overflow-hidden transition-all duration-300 bg-[#0d0d14]",
       isSuperSpeed ? "border-pink-500/70 shadow-[0_0_25px_rgba(236,72,153,0.2)]" : isHighSpeed ? "border-emerald-500/50 shadow-[0_0_20px_rgba(0,255,136,0.12)]" : "border-white/10"
     )}>
       {/* Background Neon Speed Glow */}
@@ -69,14 +77,14 @@ export function Speedometer({
         )} 
       />
 
-      {/* Top Bar: Integrated F1 16-LED Shift Lights */}
-      <div className="w-full flex items-center justify-between gap-2 z-10 shrink-0">
+      {/* Top Bar: 16-LED Shift Lights + Unit Switcher */}
+      <div className="w-full flex items-center justify-between gap-2 z-10 shrink-0 mb-1">
         <div className="flex items-center gap-1">
           <span className="text-[9px] font-mono font-bold text-gray-400">SPEED</span>
         </div>
 
         {/* 16-LED Shift Light Strip */}
-        <div className="flex-1 max-w-[220px] flex items-center justify-center gap-1 bg-black/60 p-1 rounded-full border border-white/10">
+        <div className="flex-1 max-w-[240px] flex items-center justify-center gap-1 bg-black/60 p-1 rounded-full border border-white/10">
           {Array.from({ length: numLeds }).map((_, i) => {
             const isActive = i < activeLeds;
             const isRed = i >= 12;
@@ -110,51 +118,90 @@ export function Speedometer({
         </button>
       </div>
 
-      {/* Center Cluster: Big Speed Number + Gear Box Side-by-Side */}
-      <div className="flex items-center justify-center gap-4 sm:gap-6 my-auto py-1 z-10">
-        {/* Speed Number */}
-        <div className="flex flex-col items-center">
-          <motion.div 
-            key={`${unit}-${currentSpeed}`}
-            initial={{ opacity: 0.95, scale: 0.99 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-5xl sm:text-7xl md:text-8xl landscape:text-5xl lg:landscape:text-6xl font-mono font-black leading-none tracking-tighter"
-            style={{ 
-              color: connected ? 'white' : 'var(--color-text-muted)',
-              textShadow: isSuperSpeed 
-                ? '0 0 35px rgba(236,72,153,0.5)' 
-                : isHighSpeed 
-                  ? '0 0 25px rgba(0,255,136,0.4)' 
-                  : 'none'
-            }}
-          >
-            {currentSpeed.toString().padStart(3, '0')}
-          </motion.div>
-          
-          <span className="text-[10px] sm:text-xs font-mono font-bold tracking-[0.2em] text-[var(--color-accent-primary)] uppercase">
-            {unit}
+      {/* Main Center Cockpit Deck: Throttle Bar | Speed & Gear | Brake Bar */}
+      <div className="flex items-center justify-between gap-2 sm:gap-4 my-auto py-1 z-10">
+        
+        {/* Left Column: High-Visibility Glowing Throttle Bar */}
+        <div className="flex flex-col items-center gap-1 w-10 sm:w-12 shrink-0">
+          <span className="text-[8px] sm:text-[9px] font-mono font-bold text-emerald-400 uppercase tracking-tight">
+            THR
+          </span>
+          <div className="w-5 sm:w-6 h-16 sm:h-20 bg-black/70 rounded-md p-0.5 border border-white/10 flex flex-col justify-end overflow-hidden">
+            <motion.div
+              className="w-full bg-gradient-to-t from-emerald-500 to-emerald-400 rounded-sm shadow-[0_0_10px_rgba(0,255,136,0.5)]"
+              style={{ height: `${throttlePct}%` }}
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+            />
+          </div>
+          <span className="text-[9px] sm:text-[10px] font-mono font-black text-emerald-400">
+            {throttlePct}%
           </span>
         </div>
 
-        {/* Big Motorsport Gear Box */}
-        <div className="flex flex-col items-center">
-          <div className={cn(
-            "w-12 h-14 sm:w-16 sm:h-18 landscape:w-11 landscape:h-13 rounded-xl border-2 flex items-center justify-center bg-black/80 shadow-lg relative overflow-hidden transition-all",
-            isShiftFlash ? "border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "border-white/20"
-          )}>
-            <span className={cn(
-              "text-3xl sm:text-4xl landscape:text-2xl font-mono font-black",
-              isShiftFlash ? "text-red-400 animate-pulse" : "text-emerald-400"
-            )}>
-              {gearText}
+        {/* Center: Big Bold Speed Number + Gear Box */}
+        <div className="flex items-center justify-center gap-3 sm:gap-6 flex-1">
+          {/* Speed Number */}
+          <div className="flex flex-col items-center">
+            <motion.div 
+              key={`${unit}-${currentSpeed}`}
+              initial={{ opacity: 0.95, scale: 0.99 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-6xl sm:text-7xl md:text-8xl landscape:text-5xl lg:landscape:text-6xl font-mono font-black leading-none tracking-tighter"
+              style={{ 
+                color: connected ? 'white' : 'var(--color-text-muted)',
+                textShadow: isSuperSpeed 
+                  ? '0 0 35px rgba(236,72,153,0.5)' 
+                  : isHighSpeed 
+                    ? '0 0 25px rgba(0,255,136,0.4)' 
+                    : 'none'
+              }}
+            >
+              {currentSpeed.toString().padStart(3, '0')}
+            </motion.div>
+            
+            <span className="text-[10px] sm:text-xs font-mono font-black tracking-[0.25em] text-[var(--color-accent-primary)] uppercase">
+              {unit}
             </span>
           </div>
-          <span className="text-[8px] font-mono text-gray-400 font-bold uppercase mt-0.5">GEAR</span>
+
+          {/* Motorsport Gear Box */}
+          <div className="flex flex-col items-center">
+            <div className={cn(
+              "w-12 h-14 sm:w-16 sm:h-18 landscape:w-11 landscape:h-13 rounded-xl border-2 flex items-center justify-center bg-black/80 shadow-lg relative overflow-hidden transition-all",
+              isShiftFlash ? "border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]" : "border-white/20"
+            )}>
+              <span className={cn(
+                "text-3xl sm:text-4xl landscape:text-2xl font-mono font-black",
+                isShiftFlash ? "text-red-400 animate-pulse" : "text-emerald-400"
+              )}>
+                {gearText}
+              </span>
+            </div>
+            <span className="text-[8px] font-mono text-gray-400 font-bold uppercase mt-0.5">GEAR</span>
+          </div>
         </div>
+
+        {/* Right Column: High-Visibility Glowing Brake Bar */}
+        <div className="flex flex-col items-center gap-1 w-10 sm:w-12 shrink-0">
+          <span className="text-[8px] sm:text-[9px] font-mono font-bold text-red-400 uppercase tracking-tight">
+            BRK
+          </span>
+          <div className="w-5 sm:w-6 h-16 sm:h-20 bg-black/70 rounded-md p-0.5 border border-white/10 flex flex-col justify-end overflow-hidden">
+            <motion.div
+              className="w-full bg-gradient-to-t from-red-600 to-red-500 rounded-sm shadow-[0_0_10px_rgba(255,34,68,0.5)]"
+              style={{ height: `${brakePct}%` }}
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+            />
+          </div>
+          <span className="text-[9px] sm:text-[10px] font-mono font-black text-red-400">
+            {brakePct}%
+          </span>
+        </div>
+
       </div>
 
       {/* Bottom Row: Telemetry Quick Tiles (HP, Torque, Boost, Fuel) */}
-      <div className="w-full grid grid-cols-4 gap-1 sm:gap-2 pt-1 border-t border-white/10 z-10 shrink-0">
+      <div className="w-full grid grid-cols-4 gap-1 sm:gap-2 pt-1.5 border-t border-white/10 z-10 shrink-0">
         {/* HP */}
         <div className="flex flex-col items-center bg-black/40 border border-white/5 rounded p-1">
           <div className="flex items-center gap-0.5 text-[8px] sm:text-[9px] text-gray-400 font-mono">
@@ -191,11 +238,10 @@ export function Speedometer({
         {/* Fuel */}
         <div className="flex flex-col items-center bg-black/40 border border-white/5 rounded p-1">
           <div className="flex items-center gap-0.5 text-[8px] sm:text-[9px] text-gray-400 font-mono">
-            <Fuel size={9} className="text-emerald-400" />
-            <span>FUEL</span>
+            <span className="text-[8px] text-emerald-400 font-bold">FUEL</span>
           </div>
           <span className="text-[10px] sm:text-xs font-mono font-bold text-white">
-            {fuelPct}%
+            {Math.round(fuelPct)}%
           </span>
         </div>
       </div>

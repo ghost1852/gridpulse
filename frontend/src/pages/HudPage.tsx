@@ -1,37 +1,41 @@
+import { useState, useEffect } from 'react';
 import { useTelemetry } from '../hooks/useTelemetry';
-import { CarInfo } from '../components/hud/CarInfo';
 import { Speedometer } from '../components/hud/Speedometer';
-import { GForceCircle } from '../components/hud/GForceCircle';
-import { PedalMeters } from '../components/hud/PedalMeters';
 import { TireTemps } from '../components/hud/TireTemps';
-import { LapTimer } from '../components/hud/LapTimer';
-import { TractionDynamics } from '../components/hud/TractionDynamics';
+import { GForceCircle } from '../components/hud/GForceCircle';
+import { CarInfo } from '../components/hud/CarInfo';
 import { RaceAlertBanner } from '../components/hud/RaceAlertBanner';
+import { TractionDynamics } from '../components/hud/TractionDynamics';
 import { Maximize2, Minimize2 } from 'lucide-react';
-import { useState } from 'react';
 
 export function HudPage() {
   const { telemetry, connected } = useTelemetry();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
     } else {
       document.exitFullscreen().catch(() => {});
-      setIsFullscreen(false);
     }
   };
 
-  // Fallback data
+  // Fallback demo/empty telemetry object
   const data = telemetry || {
-    speed_mph: 0, 
-    speed_kph: 0, 
-    current_engine_rpm: 0, 
-    engine_max_rpm: 8500, 
+    speed_mph: 0,
+    speed_kph: 0,
+    current_engine_rpm: 0,
+    engine_max_rpm: 8000,
     gear: 0,
-    accel: 0, 
+    accel: 0,
     brake: 0,
     clutch: 0,
     handbrake: 0,
@@ -77,10 +81,10 @@ export function HudPage() {
   return (
     <div className="w-full h-full">
       {/* ========================================================================= */}
-      {/* 1. VERTICAL PORTRAIT MODE: Clean Linear Scroll with ZERO Overlaps         */}
+      {/* 1. VERTICAL PORTRAIT MODE: Clean Single-Screen Cockpit Layout             */}
       {/* ========================================================================= */}
-      <div className="block landscape:hidden p-3 space-y-3 pb-36 overflow-y-auto">
-        {/* Car Banner */}
+      <div className="block landscape:hidden p-2.5 sm:p-3 space-y-2.5 pb-28 overflow-y-auto">
+        {/* Car & Connection Status Bar */}
         <CarInfo 
           carOrdinal={data.car_ordinal}
           carClass={data.car_class_name} 
@@ -108,7 +112,7 @@ export function HudPage() {
           brake={data.brake}
         />
 
-        {/* Speedometer Cluster (Speed + 16-LED Tach + Gear + Stats) */}
+        {/* Speedometer Cluster (Speed + Throttle/Brake Pedal Meters + 16-LED Tach + Gear) */}
         <Speedometer 
           speedMph={data.speed_mph} 
           speedKph={data.speed_kph}
@@ -119,17 +123,25 @@ export function HudPage() {
           torqueFtlb={data.torque_ftlb}
           boostPsi={data.boost_psi}
           fuelPct={data.fuel_pct}
+          throttle={data.accel}
+          brake={data.brake}
           connected={connected} 
         />
 
-        {/* Tire Thermals & Grip Card */}
+        {/* Tire Thermals + Integrated Central Lap Timing Module */}
         <TireTemps 
           fl={data.tire_temp_fl} fr={data.tire_temp_fr} 
           rl={data.tire_temp_rl} rr={data.tire_temp_rr} 
           slipFl={data.tire_slip_fl} slipFr={data.tire_slip_fr}
           slipRl={data.tire_slip_rl} slipRr={data.tire_slip_rr}
+          slipAngleFl={data.slip_angle_fl} slipAngleFr={data.slip_angle_fr}
+          slipAngleRl={data.slip_angle_rl} slipAngleRr={data.slip_angle_rr}
           suspFl={data.susp_fl} suspFr={data.susp_fr}
           suspRl={data.susp_rl} suspRr={data.susp_rr}
+          currentLap={data.current_lap}
+          bestLap={data.best_lap}
+          lastLap={data.last_lap}
+          lapNumber={data.lap_number}
         />
 
         {/* Chassis Balance, Understeer/Oversteer & Traction Utilization */}
@@ -159,26 +171,12 @@ export function HudPage() {
         {/* G-Force Friction Circle Card */}
         <GForceCircle accelX={data.acceleration_x} accelZ={data.acceleration_z} />
 
-        {/* Throttle & Brake Pedal Meters */}
-        <div className="h-32">
-          <PedalMeters throttle={data.accel} brake={data.brake} />
-        </div>
-
-        {/* Lap Times Card */}
-        <LapTimer 
-          currentLap={data.current_lap} 
-          bestLap={data.best_lap} 
-          lastLap={data.last_lap} 
-          currentRaceTime={data.current_race_time}
-          lapNumber={data.lap_number}
-        />
-
-        {/* Extra Bottom Clearance Buffer for Mobile Bottom Nav */}
-        <div className="h-10 pointer-events-none" />
+        {/* Bottom Nav Clearance Buffer */}
+        <div className="h-6 pointer-events-none" />
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. HORIZONTAL LANDSCAPE COCKPIT MODE: Smooth Scrollable Edge-to-Edge      */}
+      {/* 2. HORIZONTAL LANDSCAPE COCKPIT MODE: High Density Motorsport Grid       */}
       {/* ========================================================================= */}
       <div className="hidden landscape:flex flex-col justify-start p-2 gap-2 pb-16 overflow-y-auto">
         {/* Top Slim Header */}
@@ -202,22 +200,28 @@ export function HudPage() {
           </button>
         </div>
 
-        {/* 3-Column Responsive Motorsport Grid */}
+        {/* 3-Column Responsive Grid */}
         <div className="grid grid-cols-12 gap-2 items-stretch min-h-0">
-          {/* Left: Tires & Suspension (col 4) */}
-          <div className="col-span-4 flex flex-col justify-between">
+          {/* Left: Tires & Center Lap Timer (col 5) */}
+          <div className="col-span-5 flex flex-col justify-between">
             <TireTemps 
               fl={data.tire_temp_fl} fr={data.tire_temp_fr} 
               rl={data.tire_temp_rl} rr={data.tire_temp_rr} 
               slipFl={data.tire_slip_fl} slipFr={data.tire_slip_fr}
               slipRl={data.tire_slip_rl} slipRr={data.tire_slip_rr}
+              slipAngleFl={data.slip_angle_fl} slipAngleFr={data.slip_angle_fr}
+              slipAngleRl={data.slip_angle_rl} slipAngleRr={data.slip_angle_rr}
               suspFl={data.susp_fl} suspFr={data.susp_fr}
               suspRl={data.susp_rl} suspRr={data.susp_rr}
+              currentLap={data.current_lap}
+              bestLap={data.best_lap}
+              lastLap={data.last_lap}
+              lapNumber={data.lap_number}
             />
           </div>
 
-          {/* Center: Speedometer + Shift Lights + Gear + Stats (col 5) */}
-          <div className="col-span-5 flex flex-col justify-center">
+          {/* Center: Speedometer + Pedals + Shift Lights + Gear + Stats (col 4) */}
+          <div className="col-span-4 flex flex-col justify-center">
             <Speedometer 
               speedMph={data.speed_mph} 
               speedKph={data.speed_kph}
@@ -228,24 +232,37 @@ export function HudPage() {
               torqueFtlb={data.torque_ftlb}
               boostPsi={data.boost_psi}
               fuelPct={data.fuel_pct}
+              throttle={data.accel}
+              brake={data.brake}
               connected={connected} 
             />
           </div>
 
-          {/* Right: G-Force Circle + Lap Times (col 3) */}
+          {/* Right: G-Force Circle + Dynamics (col 3) */}
           <div className="col-span-3 flex flex-col justify-between gap-1.5">
-            <div>
-              <GForceCircle accelX={data.acceleration_x} accelZ={data.acceleration_z} />
-            </div>
-            <div className="shrink-0">
-              <LapTimer 
-                currentLap={data.current_lap} 
-                bestLap={data.best_lap} 
-                lastLap={data.last_lap} 
-                currentRaceTime={data.current_race_time}
-                lapNumber={data.lap_number}
-              />
-            </div>
+            <GForceCircle accelX={data.acceleration_x} accelZ={data.acceleration_z} />
+            <TractionDynamics
+              slipAngleFl={data.slip_angle_fl}
+              slipAngleFr={data.slip_angle_fr}
+              slipAngleRl={data.slip_angle_rl}
+              slipAngleRr={data.slip_angle_rr}
+              slipRatioFl={data.slip_ratio_fl}
+              slipRatioFr={data.slip_ratio_fr}
+              slipRatioRl={data.slip_ratio_rl}
+              slipRatioRr={data.slip_ratio_rr}
+              tireTempFl={data.tire_temp_fl}
+              tireTempFr={data.tire_temp_fr}
+              tireTempRl={data.tire_temp_rl}
+              tireTempRr={data.tire_temp_rr}
+              accelX={data.acceleration_x}
+              accelZ={data.acceleration_z}
+              throttle={data.accel}
+              brake={data.brake}
+              suspFl={data.susp_fl}
+              suspFr={data.susp_fr}
+              suspRl={data.susp_rl}
+              suspRr={data.susp_rr}
+            />
           </div>
         </div>
       </div>

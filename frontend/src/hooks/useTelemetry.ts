@@ -317,6 +317,19 @@ export function useTelemetry() {
       }
 
       function fallbackToWebSocket() {
+        // On HTTPS cloud deployments (e.g. Wranglr), do not attempt insecure ws:// to localhost
+        if (window.location.protocol === 'https:' && wsUrl.startsWith('ws://')) {
+          setConnected(false);
+          setReconnecting(true);
+          setTransport('disconnected');
+          const delay = Math.min(1000 * Math.pow(1.5, reconnectAttemptsRef.current), 6000);
+          reconnectAttemptsRef.current += 1;
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, delay);
+          return;
+        }
+
         try {
           if (wsRef.current) {
             wsRef.current.close();
