@@ -1,20 +1,22 @@
 import { useState } from 'react';
 import { HudPage } from './pages/HudPage';
+import { RaceAnalyzePage } from './pages/RaceAnalyzePage';
 import { TuningBenchPage } from './pages/TuningBenchPage';
 import { VehicleStatsPage } from './pages/VehicleStatsPage';
 import { DragStripPage } from './pages/DragStripPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LandingPage } from './pages/LandingPage';
 import { useTelemetry } from './hooks/useTelemetry';
-import { Gauge, Wrench, Activity, Flag, Settings, Radio, BookOpen, Download } from 'lucide-react';
+import { Gauge, LineChart, Wrench, Activity, Flag, Settings, Radio, BookOpen, Download } from 'lucide-react';
 import { cn } from './lib/utils';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'hud' | 'tuning' | 'stats' | 'drag' | 'guide' | 'settings'>('hud');
+  const [activeTab, setActiveTab] = useState<'hud' | 'analyze' | 'tuning' | 'stats' | 'drag' | 'guide' | 'settings'>('hud');
   const { connected } = useTelemetry();
 
   const tabs = [
     { id: 'hud' as const, label: 'HUD', icon: Gauge },
+    { id: 'analyze' as const, label: 'Analyze', icon: LineChart },
     { id: 'tuning' as const, label: 'Tuning', icon: Wrench },
     { id: 'stats' as const, label: 'Vehicle', icon: Activity },
     { id: 'drag' as const, label: 'Drag', icon: Flag },
@@ -111,6 +113,7 @@ export function App() {
         </header>
 
         {activeTab === 'hud' && <HudPage />}
+        {activeTab === 'analyze' && <RaceAnalyzePage />}
         {activeTab === 'tuning' && <TuningBenchPage />}
         {activeTab === 'stats' && <VehicleStatsPage />}
         {activeTab === 'drag' && <DragStripPage />}
