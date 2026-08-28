@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { useUnits } from '../context/UnitContext';
+import { useTelemetry } from '../hooks/useTelemetry';
 import { 
   Gamepad2, 
   Cpu, 
@@ -15,7 +16,9 @@ import {
   Flame, 
   Sliders,
   Ruler,
-  Scale
+  Scale,
+  Server,
+  RefreshCw
 } from 'lucide-react';
 
 export function SettingsPage() {
@@ -25,32 +28,73 @@ export function SettingsPage() {
   const [copied, setCopied] = useState(false);
   const [serverStatus, setServerStatus] = useState<any>(null);
 
+  const [telemetryHost, setTelemetryHost] = useState<string>(() => {
+    try {
+      return localStorage.getItem('gridpulse_telemetry_host') || (
+        window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+          ? 'http://localhost:8000' 
+          : 'http://localhost:8000'
+      );
+    } catch {
+      return 'http://localhost:8000';
+    }
+  });
+  const [hostSaved, setHostSaved] = useState(false);
+
   const { units, setUnit } = useUnits();
+  const { connected } = useTelemetry();
+
+  const getApiBase = () => {
+    try {
+      const saved = localStorage.getItem('gridpulse_telemetry_host');
+      if (saved && saved.trim()) {
+        let host = saved.trim().replace(/\/$/, '');
+        if (host.startsWith('ws://')) host = `http://${host.slice(5)}`;
+        else if (host.startsWith('wss://')) host = `https://${host.slice(6)}`;
+        else if (!host.startsWith('http')) host = `http://${host}`;
+        return host;
+      }
+    } catch {}
+    return '';
+  };
 
   const fetchConfig = async () => {
     try {
-      const res = await fetch('/api/config');
+      const apiBase = getApiBase();
+      const res = await fetch(`${apiBase}/api/config`);
       if (res.ok) {
         const data = await res.json();
         setSimulate(data.simulate);
         setUdpPort(String(data.udp_port));
         setServerStatus(data);
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      // Backend may be offline or initializing
     }
   };
 
   useEffect(() => {
     fetchConfig();
-    const interval = setInterval(fetchConfig, 2000);
+    const interval = setInterval(fetchConfig, 2500);
     return () => clearInterval(interval);
-  }, []);
+  }, [telemetryHost]);
+
+  const handleSaveHost = () => {
+    try {
+      const cleanHost = telemetryHost.trim().replace(/\/$/, '');
+      localStorage.setItem('gridpulse_telemetry_host', cleanHost);
+      window.dispatchEvent(new Event('gridpulse_telemetry_host_changed'));
+      setHostSaved(true);
+      fetchConfig();
+      setTimeout(() => setHostSaved(false), 2000);
+    } catch {}
+  };
 
   const handleSaveMode = async (simMode: boolean) => {
     setSaving(true);
     try {
-      await fetch('/api/config', {
+      const apiBase = getApiBase();
+      await fetch(`${apiBase}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ simulate: simMode, udp_port: parseInt(udpPort, 10) })
@@ -67,10 +111,11 @@ export function SettingsPage() {
   const handleSavePort = async () => {
     setSaving(true);
     try {
-      await fetch('/api/config', {
+      const apiBase = getApiBase();
+      await fetch(`${apiBase}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ udp_port: parseInt(udpPort, 10) })
+        body: JSON.stringify({ simulate, udp_port: parseInt(udpPort, 10) })
       });
       await fetchConfig();
     } catch (e) {
@@ -80,41 +125,131 @@ export function SettingsPage() {
     }
   };
 
+  // Derive suggested in-game IP
+  const getSuggestedForzaIp = () => {
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return '127.0.0.1';
+    }
+    // If telemetryHost is configured with an IP, extract it
+    const match = telemetryHost.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+    if (match) {
+      return match[1];
+    }
+    return '127.0.0.1';
+  };
+
   const copyForzaSettings = () => {
-    const text = `IP: 127.0.0.1 (or ${window.location.hostname})\nPort: ${udpPort}`;
+    const text = `Data Out: ON\nData Out IP Address: ${getSuggestedForzaIp()}\nData Out IP Port: ${udpPort}\nData Out Packet Format: Car Dash`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const isCloudHost = typeof window !== 'undefined' && 
+    window.location.hostname !== 'localhost' && 
+    window.location.hostname !== '127.0.0.1' && 
+    !window.location.hostname.startsWith('192.168.');
+
   return (
-    <div className="p-3 sm:p-6 md:p-8 max-w-4xl mx-auto space-y-6 pb-36 landscape:pb-16">
-      <div>
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-widest uppercase mb-1 font-mono">
-          Settings &amp; Preferences
+    <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto pb-24 overflow-y-auto">
+      {/* Header */}
+      <div className="space-y-1">
+        <h1 className="text-2xl sm:text-3xl font-black font-mono tracking-wider text-white uppercase flex items-center gap-2">
+          <Sliders className="text-emerald-400" />
+          <span>SETTINGS &amp; PREFERENCES</span>
         </h1>
-        <p className="text-gray-400 font-mono text-xs sm:text-sm">
-          Granular unit configuration and Forza Horizon telemetry connection
+        <p className="text-xs sm:text-sm text-gray-400 font-mono">
+          Granular unit configuration, local backend telemetry gateway, and Forza Horizon connection
         </p>
       </div>
 
       {/* ========================================================================= */}
-      {/* 1. GRANULAR UNIT CUSTOMIZATION MATRIX (Per-Metric Selection)             */}
+      {/* 1. TELEMETRY BACKEND GATEWAY (Crucial for Web PWA)                         */}
       {/* ========================================================================= */}
-      <Card className="p-5 space-y-4 bg-[#0e0e16] border-white/10">
-        <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+      <Card className="p-5 space-y-4 bg-[#0e0e16] border-emerald-500/40 shadow-[0_0_25px_rgba(0,255,136,0.08)]">
+        <div className="flex justify-between items-center border-b border-white/10 pb-2.5">
           <div className="flex items-center gap-2">
-            <Sliders size={18} className="text-emerald-400" />
-            <h2 className="text-sm sm:text-base font-bold font-mono text-white uppercase">
-              Individual Metric &amp; Imperial Unit Choices
+            <Server size={18} className="text-emerald-400" />
+            <h2 className="text-sm sm:text-base font-bold font-mono text-white">
+              LOCAL TELEMETRY GATEWAY (PYTHON BACKEND)
             </h2>
           </div>
-          <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 border border-white/10 text-[10px] font-mono">
+            <Radio size={11} className={connected ? "text-emerald-400 animate-pulse" : "text-amber-400"} />
+            <span className={connected ? "text-emerald-400 font-bold" : "text-amber-400"}>
+              {connected ? "60Hz LIVE STREAM" : "OFFLINE / DISCONNECTED"}
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-300 font-mono leading-relaxed">
+          {isCloudHost 
+            ? "When running GridPulse from the cloud web host, connect to your PC's Python backend listener (where Forza transmits 60Hz UDP packets)."
+            : "GridPulse communicates directly with your local Python FastAPI telemetry server via WebSocket & REST."}
+        </p>
+
+        <div className="space-y-3 font-mono text-xs">
+          <div className="space-y-1">
+            <label className="text-[10px] uppercase font-bold text-gray-400">
+              Backend Server URL (Host &amp; Port)
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={telemetryHost}
+                onChange={(e) => setTelemetryHost(e.target.value)}
+                placeholder="http://localhost:8000 or http://192.168.88.4:8000"
+                className="flex-1 bg-black border border-white/20 rounded-xl px-3 py-2 text-white font-bold outline-none focus:border-emerald-400 transition-colors"
+              />
+              <button
+                type="button"
+                onClick={handleSaveHost}
+                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-black font-bold uppercase text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-[0_0_15px_rgba(0,255,136,0.3)]"
+              >
+                {hostSaved ? <Check size={14} /> : <RefreshCw size={14} />}
+                <span>{hostSaved ? "Connected & Saved" : "Connect Gateway"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Presets */}
+          <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+            <span className="text-gray-500">Quick Presets:</span>
+            <button
+              type="button"
+              onClick={() => { setTelemetryHost('http://localhost:8000'); }}
+              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 cursor-pointer"
+            >
+              Localhost (http://localhost:8000)
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTelemetryHost('http://192.168.88.4:8000'); }}
+              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 cursor-pointer"
+            >
+              LAN PC (http://192.168.88.4:8000)
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      {/* ========================================================================= */}
+      {/* 2. UNITS OF MEASUREMENT CUSTOMIZER                                         */}
+      {/* ========================================================================= */}
+      <Card className="p-5 space-y-4 bg-[#0e0e16] border-white/10">
+        <div className="flex justify-between items-center border-b border-white/10 pb-2.5">
+          <div className="flex items-center gap-2">
+            <Gauge size={18} className="text-emerald-400" />
+            <h2 className="text-sm sm:text-base font-bold font-mono">
+              INDIVIDUAL METRIC &amp; IMPERIAL UNIT CHOICES
+            </h2>
+          </div>
+          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
             Auto-Saved
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 font-mono text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1 font-mono text-xs">
           {/* Speed Unit */}
           <div className="bg-black/50 border border-white/10 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -147,7 +282,7 @@ export function SettingsPage() {
           {/* Temperature Unit */}
           <div className="bg-black/50 border border-white/10 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Thermometer size={16} className="text-red-400" />
+              <Thermometer size={16} className="text-rose-400" />
               <div>
                 <span className="font-bold text-white block">Tire Thermals</span>
                 <span className="text-[10px] text-gray-500">4-Corner Tire Temps</span>
@@ -173,7 +308,7 @@ export function SettingsPage() {
             </div>
           </div>
 
-          {/* Pressure Unit */}
+          {/* Tire Pressure Unit */}
           <div className="bg-black/50 border border-white/10 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Gauge size={16} className="text-amber-400" />
@@ -210,7 +345,7 @@ export function SettingsPage() {
             </div>
           </div>
 
-          {/* Power Unit */}
+          {/* Engine Power Unit */}
           <div className="bg-black/50 border border-white/10 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap size={16} className="text-yellow-400" />
@@ -350,7 +485,7 @@ export function SettingsPage() {
             </div>
           </div>
 
-          {/* Weight / Downforce */}
+          {/* Weight Unit */}
           <div className="bg-black/50 border border-white/10 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Scale size={16} className="text-pink-400" />
@@ -382,7 +517,7 @@ export function SettingsPage() {
       </Card>
 
       {/* ========================================================================= */}
-      {/* 2. TELEMETRY SOURCE MODE SELECTOR                                         */}
+      {/* 3. TELEMETRY SOURCE MODE SELECTOR                                         */}
       {/* ========================================================================= */}
       <Card className="p-5 space-y-4 bg-[#0e0e16] border-white/10">
         <h2 className="text-sm sm:text-base font-bold border-b border-white/10 pb-2 flex items-center gap-2 font-mono">
@@ -438,7 +573,7 @@ export function SettingsPage() {
       </Card>
 
       {/* ========================================================================= */}
-      {/* 3. IN-GAME FORZA HORIZON CONNECTION SETUP                                  */}
+      {/* 4. IN-GAME FORZA HORIZON CONNECTION SETUP                                  */}
       {/* ========================================================================= */}
       <Card className="p-5 space-y-4 border-emerald-500/30 bg-[#0e0e16]">
         <div className="flex justify-between items-center border-b border-white/10 pb-2.5">
@@ -458,12 +593,12 @@ export function SettingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1 font-mono text-xs">
           {/* Setting 1: IP */}
           <div className="bg-black/50 border border-white/10 rounded-xl p-3.5 space-y-1">
-            <span className="text-[9px] uppercase font-bold text-gray-400">1. Data Out IP Address</span>
+            <span className="text-[9px] uppercase font-bold text-gray-400">1. Data Out IP Address (IPv4)</span>
             <div className="text-lg font-bold text-emerald-400">
-              {window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname}
+              {getSuggestedForzaIp()}
             </div>
             <p className="text-[10px] text-gray-500">
-              Enter this IP in Forza's HUD and Gameplay &gt; Data Out IP settings.
+              Enter this IP in Forza's HUD and Gameplay &gt; Data Out IP settings. (Forza requires an IPv4 address, not a domain name).
             </p>
           </div>
 
@@ -488,17 +623,60 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Live Packet Status */}
-        <div className="bg-black/30 rounded-xl p-3 border border-white/5 flex items-center justify-between text-xs font-mono">
-          <div className="flex items-center gap-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${serverStatus?.packets_received > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-yellow-500'}`} />
-            <span className="text-gray-300">
-              Packets Streamed: <strong className="text-white">{serverStatus?.packets_received?.toLocaleString() || 0}</strong>
+        {/* 3-Tier Diagnostics Panel */}
+        <div className="bg-black/40 rounded-xl p-4 border border-white/10 space-y-3 font-mono">
+          <div className="flex items-center justify-between border-b border-white/5 pb-2">
+            <span className="text-xs font-bold text-white uppercase tracking-wider">
+              TELEMETRY PIPELINE DIAGNOSTICS
+            </span>
+            <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+              Privacy-First Local Ingress
             </span>
           </div>
-          <span className="text-gray-400">
-            Mode: <strong className={simulate ? 'text-cyan-400' : 'text-emerald-400'}>{simulate ? 'Simulator' : 'Live Forza'}</strong>
-          </span>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            {/* 1. Web Gateway */}
+            <div className={`p-3 rounded-lg border ${connected ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-red-500/10 border-red-500/30 text-red-300'}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] uppercase font-bold text-gray-400">1. WEB GATEWAY</span>
+                <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400 animate-pulse' : 'bg-red-500'}`} />
+              </div>
+              <div className="text-sm font-black text-white">
+                {connected ? 'CONNECTED' : 'DISCONNECTED'}
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">
+                {connected ? `PWA linked to Local Bridge (${telemetryHost})` : 'Waiting for local Python bridge...'}
+              </p>
+            </div>
+
+            {/* 2. UDP Receiver */}
+            <div className={`p-3 rounded-lg border ${serverStatus?.udp_listening ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : (connected ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-black/40 border-white/10 text-gray-400')}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] uppercase font-bold text-gray-400">2. UDP RECEIVER</span>
+                <span className={`w-2 h-2 rounded-full ${serverStatus?.udp_listening ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+              </div>
+              <div className="text-sm font-black text-white">
+                {serverStatus?.udp_listening ? `LISTENING :${udpPort}` : 'STOPPED'}
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">
+                Local datagram socket ready on 0.0.0.0:{udpPort}
+              </p>
+            </div>
+
+            {/* 3. Forza Stream */}
+            <div className={`p-3 rounded-lg border ${(serverStatus?.packet_rate_hz > 0 || serverStatus?.telemetry_state === 'RECEIVING') ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] uppercase font-bold text-gray-400">3. FORZA TELEMETRY</span>
+                <span className={`w-2 h-2 rounded-full ${(serverStatus?.packet_rate_hz > 0 || serverStatus?.telemetry_state === 'RECEIVING') ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
+              </div>
+              <div className="text-sm font-black text-white">
+                {serverStatus?.telemetry_state === 'RECEIVING' ? `${serverStatus?.packet_rate_hz || 60} HZ STREAMING` : (simulate ? 'SIMULATOR ACTIVE' : 'WAITING FOR FEED')}
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1">
+                Total Packets: {serverStatus?.packets_received?.toLocaleString() || 0}
+              </p>
+            </div>
+          </div>
         </div>
       </Card>
 

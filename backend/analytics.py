@@ -328,3 +328,17 @@ class TelemetryAnalytics:
             "records": records,
             "state": self.current_state
         }
+
+    def get_current_state(self) -> dict:
+        """Returns the active state payload for WebSockets and HUD."""
+        return {
+            "sprint_status": self.sprint_status,
+            "sprint_times": self.sprint_times,
+            "sprint_active": self.sprint_active,
+            "braking_active": self.braking_active,
+            "is_rewinding": self.is_rewinding,
+            "peak_tire_temp": self.peak_tire_temp,
+            "peak_lat_g": self.peak_lat_g,
+            "peak_dec_g": self.peak_dec_g,
+            "top_speed": self.top_speed,
+        }

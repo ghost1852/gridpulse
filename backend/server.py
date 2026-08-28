@@ -2,8 +2,10 @@ import asyncio
 import json
 import logging
 import argparse
+import time
+from typing import Set, Dict, Any
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -13,225 +15,311 @@ from analytics import TelemetryAnalytics
 import database
 from simulator import TelemetrySimulator
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger("GridPulse")
 
-app = FastAPI(title="GridPulse Backend")
+app = FastAPI(title="GridPulse Telemetry Engine", version="2.0.0")
 
+# Security Hardened CORS (permits localhost, LAN, and Wranglr edge deployments)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|.*\.wranglr\.co\.za)(:\d+)?",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 analytics_engine = TelemetryAnalytics()
-active_connections = []
+active_connections: Set[WebSocket] = set()
+
+# Asynchronous non-blocking Database Queue
+db_queue: asyncio.Queue = asyncio.Queue()
+
+# Diagnostics & Telemetry Rate Tracking
 stats = {
     "packets_received": 0,
-    "last_car_ordinal": 0
+    "last_car_ordinal": 0,
+    "last_packet_time": 0.0,
+    "packet_rate_hz": 0.0,
+    "udp_listening": False,
+    "active_clients": 0,
 }
 
-# Config flags
 CONFIG = {
     "simulate": False,
     "udp_port": 20066,
-    "port": 8000
+    "port": 8000,
+    "host": "0.0.0.0"
 }
 
+_recent_packet_timestamps = []
+
+# =========================================================================
+# ASYNC DATABASE WORKER (Decoupled from hot 60Hz telemetry loop)
+# =========================================================================
+async def db_worker():
+    """Consumes telemetry milestone records from queue and writes to SQLite asynchronously."""
+    while True:
+        try:
+            record = await db_queue.get()
+            rec_type = record.get("type")
+            if rec_type == "sprint":
+                await database.save_sprint(record)
+            elif rec_type == "peak":
+                await database.save_peak(record)
+            db_queue.task_done()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in DB worker: {e}")
+
+# =========================================================================
+# TELEMETRY PIPELINE (Low-jitter, non-blocking ingestion & broadcast)
+# =========================================================================
 async def process_and_broadcast(data: bytes, source: str = "udp"):
-    # If live UDP is streaming, ignore any residual simulator frames
+    global _recent_packet_timestamps
+
     if source == "sim" and not CONFIG["simulate"]:
         return
 
+    now = time.time()
     stats["packets_received"] += 1
+    stats["last_packet_time"] = now
+
+    # Rolling packet rate calculation (over last 1 second window)
+    _recent_packet_timestamps.append(now)
+    cutoff = now - 1.0
+    while _recent_packet_timestamps and _recent_packet_timestamps[0] < cutoff:
+        _recent_packet_timestamps.pop(0)
+    stats["packet_rate_hz"] = round(len(_recent_packet_timestamps), 1)
+
     telemetry = parse_packet(data)
-    
     if not telemetry:
         return
-        
+
     stats["last_car_ordinal"] = telemetry.get("CarOrdinal", 0)
-    
+
+    # Process driving physics & sprint detection
     result = analytics_engine.process(telemetry)
     records = result.get("records", [])
-    
-    for rec in records:
-        if rec["type"] == "sprint":
-            await database.save_sprint(rec)
-        elif rec["type"] == "peak":
-            await database.save_peak(rec)
 
-    # Broadcast to connected WebSockets
+    # Push to async DB queue (Zero filesystem wait in 60Hz loop)
+    for rec in records:
+        db_queue.put_nowait(rec)
+
+    # Fast single-pass JSON serialization for all connected WebSockets
     if active_connections:
         message = {
             "telemetry": telemetry,
             "analytics_state": result.get("state", {})
         }
         msg_str = json.dumps(message)
+        
+        # Broadcast concurrently
         dead_connections = []
-        for conn in active_connections:
+        for conn in list(active_connections):
             try:
                 await conn.send_text(msg_str)
-            except Exception as e:
-                logger.debug(f"Websocket error: {e}")
+            except Exception:
                 dead_connections.append(conn)
-        for dead in dead_connections:
-            if dead in active_connections:
-                active_connections.remove(dead)
 
+        for dead in dead_connections:
+            active_connections.discard(dead)
+            stats["active_clients"] = len(active_connections)
+
+# =========================================================================
+# UDP PROTOCOL LISTENER
+# =========================================================================
 class TelemetryUDPProtocol(asyncio.DatagramProtocol):
     def connection_made(self, transport):
         self.transport = transport
-        logger.info(f"UDP Server listening on port {CONFIG['udp_port']}")
+        stats["udp_listening"] = True
+        logger.info(f"UDP Telemetry listener active on port {CONFIG['udp_port']}")
 
     def datagram_received(self, data, addr):
-        # When real game data arrives, ensure simulator is silenced
+        # Auto-switch from simulator when real Forza packets arrive
         if CONFIG["simulate"]:
-            logger.info("Real Forza packets detected! Automatically disabling simulator mode.")
+            logger.info("Live Forza packets detected! Automatically disabling simulator.")
             CONFIG["simulate"] = False
             stop_simulator()
-            
+
         asyncio.create_task(process_and_broadcast(data, source="udp"))
 
-# Current running background tasks/transports
+    def connection_lost(self, exc):
+        stats["udp_listening"] = False
+        logger.info("UDP Telemetry listener closed")
+
 runtime_state = {
     "simulator_task": None,
     "udp_transport": None,
+    "db_worker_task": None
 }
 
-async def start_udp_listener(port: int):
-    loop = asyncio.get_running_loop()
-    if runtime_state["udp_transport"]:
-        try:
-            runtime_state["udp_transport"].close()
-        except Exception:
-            pass
-    try:
-        transport, _ = await loop.create_datagram_endpoint(
-            lambda: TelemetryUDPProtocol(),
-            local_addr=('0.0.0.0', port)
+def start_simulator():
+    if runtime_state["simulator_task"] is None or runtime_state["simulator_task"].done():
+        simulator = TelemetrySimulator()
+        runtime_state["simulator_task"] = asyncio.create_task(
+            simulator.run(lambda packet: process_and_broadcast(packet, source="sim"))
         )
-        runtime_state["udp_transport"] = transport
-        logger.info(f"UDP listener active on 0.0.0.0:{port}")
-    except Exception as e:
-        logger.error(f"Failed to bind UDP port {port}: {e}")
-
-async def start_simulator():
-    if runtime_state["simulator_task"] and not runtime_state["simulator_task"].done():
-        runtime_state["simulator_task"].cancel()
-    
-    sim = TelemetrySimulator()
-    async def sim_callback(packet):
-        await process_and_broadcast(packet, source="sim")
-        
-    runtime_state["simulator_task"] = asyncio.create_task(sim.run(sim_callback))
-    logger.info("Simulator task started")
+        logger.info("Physics simulator started")
 
 def stop_simulator():
     if runtime_state["simulator_task"] and not runtime_state["simulator_task"].done():
         runtime_state["simulator_task"].cancel()
         runtime_state["simulator_task"] = None
-        logger.info("Simulator task stopped")
+        logger.info("Physics simulator stopped")
 
+# =========================================================================
+# LIFECYCLE HOOKS
+# =========================================================================
 @app.on_event("startup")
-async def startup_event():
+async def startup():
     await database.init_db()
-    await start_udp_listener(CONFIG["udp_port"])
-    if CONFIG["simulate"]:
-        await start_simulator()
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    active_connections.append(websocket)
-    logger.info(f"Client connected to telemetry stream. Total active: {len(active_connections)}")
+    # Start non-blocking DB worker
+    runtime_state["db_worker_task"] = asyncio.create_task(db_worker())
+
+    loop = asyncio.get_running_loop()
     try:
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        if websocket in active_connections:
-            active_connections.remove(websocket)
-        logger.info(f"Client disconnected. Remaining: {len(active_connections)}")
+        transport, _ = await loop.create_datagram_endpoint(
+            lambda: TelemetryUDPProtocol(),
+            local_addr=("0.0.0.0", CONFIG["udp_port"])
+        )
+        runtime_state["udp_transport"] = transport
+    except Exception as e:
+        logger.error(f"Failed to bind UDP port {CONFIG['udp_port']}: {e}")
+
+    if CONFIG["simulate"]:
+        start_simulator()
+
+@app.on_event("shutdown")
+async def shutdown():
+    stop_simulator()
+    if runtime_state["udp_transport"]:
+        runtime_state["udp_transport"].close()
+    if runtime_state["db_worker_task"]:
+        runtime_state["db_worker_task"].cancel()
+
+# =========================================================================
+# REST API ENDPOINTS
+# =========================================================================
+@app.get("/api/status")
+async def get_status():
+    """Rich 3-tier diagnostic status for the frontend."""
+    is_receiving = (time.time() - stats["last_packet_time"]) < 2.0 if stats["last_packet_time"] > 0 else False
+    return {
+        "status": "online",
+        "simulate_mode": CONFIG["simulate"],
+        "udp_port": CONFIG["udp_port"],
+        "udp_listening": stats["udp_listening"],
+        "telemetry_state": "RECEIVING" if is_receiving else ("SIMULATING" if CONFIG["simulate"] else "WAITING"),
+        "packet_rate_hz": stats["packet_rate_hz"] if is_receiving or CONFIG["simulate"] else 0.0,
+        "packets_received": stats["packets_received"],
+        "last_car_ordinal": stats["last_car_ordinal"],
+        "active_clients": len(active_connections)
+    }
 
 @app.get("/api/config")
 async def get_config():
     return {
         "simulate": CONFIG["simulate"],
         "udp_port": CONFIG["udp_port"],
-        "port": CONFIG["port"],
+        "udp_listening": stats["udp_listening"],
         "packets_received": stats["packets_received"],
-        "connections": len(active_connections),
-        "last_car_ordinal": stats["last_car_ordinal"]
+        "packet_rate_hz": stats["packet_rate_hz"]
     }
 
 @app.post("/api/config")
-async def set_config(payload: dict):
-    if "simulate" in payload:
-        new_sim = bool(payload["simulate"])
+async def update_config(payload: Dict[str, Any]):
+    new_sim = payload.get("simulate", CONFIG["simulate"])
+    new_port = payload.get("udp_port", CONFIG["udp_port"])
+    
+    if new_sim != CONFIG["simulate"]:
         CONFIG["simulate"] = new_sim
         if new_sim:
-            await start_simulator()
+            start_simulator()
         else:
             stop_simulator()
-
-    if "udp_port" in payload and int(payload["udp_port"]) != CONFIG["udp_port"]:
-        new_port = int(payload["udp_port"])
+            
+    if new_port != CONFIG["udp_port"]:
         CONFIG["udp_port"] = new_port
-        await start_udp_listener(new_port)
-
-    return {"status": "updated", "config": CONFIG}
+        if runtime_state["udp_transport"]:
+            runtime_state["udp_transport"].close()
+        loop = asyncio.get_running_loop()
+        transport, _ = await loop.create_datagram_endpoint(
+            lambda: TelemetryUDPProtocol(),
+            local_addr=("0.0.0.0", CONFIG["udp_port"])
+        )
+        runtime_state["udp_transport"] = transport
+        
+    return {"status": "ok", "simulate": CONFIG["simulate"], "udp_port": CONFIG["udp_port"]}
 
 @app.get("/api/leaderboard")
-async def api_leaderboard(category: str = "0-60", car_class: str = None):
-    class_int = None
-    if car_class and car_class.isdigit():
-        class_int = int(car_class)
-    records = await database.get_leaderboard(category, class_int)
-    return {"leaderboard": records}
+async def get_leaderboard(category: str = "0-60", car_class: str = None, limit: int = 50):
+    entries = await database.get_leaderboard(category=category, car_class=car_class, limit=limit)
+    return {"category": category, "car_class": car_class, "leaderboard": entries}
 
 @app.get("/api/daily-awards")
-async def api_daily_awards(date: str = None):
-    awards = await database.get_daily_awards(date)
+async def get_daily_awards():
+    awards = await database.get_daily_awards()
     return {"awards": awards}
 
-@app.post("/api/drag/reset")
-async def api_drag_reset():
-    analytics_engine.reset_sprint()
-    return {"status": "sprint_reset"}
-
 @app.get("/api/drag/recent")
-async def api_drag_recent(limit: int = 40):
-    records = await database.get_recent_sprints(limit)
-    return {"recent_runs": records}
+async def get_recent_sprints(limit: int = 30):
+    runs = await database.get_recent_sprints(limit=limit)
+    return {"recent_runs": runs}
 
 @app.get("/api/garage/fastest")
-async def api_garage_fastest():
-    cars = await database.get_fastest_cars()
+async def get_fastest_cars():
+    cars = await database.get_fastest_cars_per_ordinal()
     return {"fastest_cars": cars}
 
+@app.post("/api/drag/reset")
+async def reset_drag():
+    analytics_engine.reset_sprint()
+    return {"status": "reset"}
+
 @app.post("/api/drag/clear")
-async def api_drag_clear():
-    await database.clear_sprints()
+async def clear_drag_history():
+    await database.clear_all_sprints()
     analytics_engine.reset_sprint()
     return {"status": "cleared"}
 
-@app.get("/api/status")
-async def api_status():
-    return {
-        "status": "online",
-        "simulate_mode": CONFIG["simulate"],
-        "udp_port": CONFIG["udp_port"],
-        "connections": len(active_connections),
-        "packets_received": stats["packets_received"],
-        "last_car_ordinal": stats["last_car_ordinal"]
-    }
+# =========================================================================
+# WEBSOCKET STREAM
+# =========================================================================
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    active_connections.add(websocket)
+    stats["active_clients"] = len(active_connections)
+    logger.info(f"WebSocket client connected. Active: {len(active_connections)}")
 
-# Mount static frontend
-frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    # Send initial status payload
+    init_state = analytics_engine.get_current_state()
+    try:
+        await websocket.send_text(json.dumps({
+            "type": "analytics",
+            "payload": init_state
+        }))
+        while True:
+            # Keepalive listener
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.debug(f"WebSocket exception: {e}")
+    finally:
+        active_connections.discard(websocket)
+        stats["active_clients"] = len(active_connections)
+        logger.info(f"WebSocket client disconnected. Active: {len(active_connections)}")
+
+# =========================================================================
+# STATIC FRONTEND MOUNT (For local standalone single-server mode)
+# =========================================================================
+frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
 if frontend_dist.exists():
-    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
-    
+    app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         file_path = frontend_dist / full_path
@@ -239,20 +327,21 @@ if frontend_dist.exists():
             return FileResponse(file_path)
         return FileResponse(frontend_dist / "index.html")
 
-def start_server(port: int = 8000, udp_port: int = 20066, simulate: bool = True):
+def main():
+    parser = argparse.ArgumentParser(description="GridPulse Forza Telemetry Engine")
+    parser.add_argument("--port", type=int, default=8000, help="Web/WS port (default: 8000)")
+    parser.add_argument("--udp-port", type=int, default=20066, help="Forza UDP port (default: 20066)")
+    parser.add_argument("--simulate", action="store_true", default=False, help="Run in simulator mode")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host address to bind (default: 0.0.0.0)")
+
+    args = parser.parse_args()
+    CONFIG["port"] = args.port
+    CONFIG["udp_port"] = args.udp_port
+    CONFIG["simulate"] = args.simulate
+    CONFIG["host"] = args.host
+
     import uvicorn
-    CONFIG["port"] = port
-    CONFIG["udp_port"] = udp_port
-    CONFIG["simulate"] = simulate
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host=CONFIG["host"], port=CONFIG["port"])
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="GridPulse Backend")
-    parser.add_argument("--port", type=int, default=8000, help="HTTP/WS server port")
-    parser.add_argument("--udp-port", type=int, default=20066, help="Forza UDP listening port")
-    parser.add_argument("--no-simulate", action="store_true", help="Disable simulator and listen on UDP socket")
-    parser.add_argument("--simulate", action="store_true", default=True, help="Run with simulated telemetry")
-    args = parser.parse_args()
-    
-    sim_mode = not args.no_simulate
-    start_server(port=args.port, udp_port=args.udp_port, simulate=sim_mode)
+    main()

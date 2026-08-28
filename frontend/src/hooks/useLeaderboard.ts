@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { apiFetch } from '../lib/api';
 
 export interface LeaderboardEntry {
   rank: number;
@@ -48,7 +49,7 @@ export function useLeaderboard(category: string, carClass: string = 'All') {
     try {
       const classParam = carClass === 'All' ? '' : `&car_class=${encodeURIComponent(carClass)}`;
       const url = `/api/leaderboard?category=${encodeURIComponent(category)}${classParam}`;
-      const res = await fetch(url);
+      const res = await apiFetch(url);
       if (!res.ok) throw new Error('Failed to fetch leaderboard');
       const json = await res.json();
       const rawEntries = Array.isArray(json) ? json : (json.leaderboard || []);
@@ -87,7 +88,7 @@ export function useDailyAwards() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/daily-awards');
+      const res = await apiFetch('/api/daily-awards');
       if (!res.ok) throw new Error('Failed to fetch daily awards');
       const json = await res.json();
       const rawAwards = Array.isArray(json) ? json : (json.awards || []);

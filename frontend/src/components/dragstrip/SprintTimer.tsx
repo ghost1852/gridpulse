@@ -4,6 +4,7 @@ import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RotateCcw, Zap, Navigation, CheckCircle2 } from 'lucide-react';
 import { useUnits } from '../../context/UnitContext';
+import { apiFetch } from '../../lib/api';
 
 interface SprintTimerProps {
   status: string;
@@ -50,7 +51,7 @@ export function SprintTimer({ status, times, onReset }: SprintTimerProps) {
     setPersistedTimes({});
     localStorage.removeItem('forza_last_time_slip');
     if (onReset) onReset();
-    fetch('/api/drag/reset', { method: 'POST' }).catch(() => {});
+    apiFetch('/api/drag/reset', { method: 'POST' }).catch(() => {});
   };
 
   const getStatusColor = () => {

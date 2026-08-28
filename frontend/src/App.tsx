@@ -3,22 +3,20 @@ import { HudPage } from './pages/HudPage';
 import { TuningBenchPage } from './pages/TuningBenchPage';
 import { VehicleStatsPage } from './pages/VehicleStatsPage';
 import { DragStripPage } from './pages/DragStripPage';
-import { LeaderboardPage } from './pages/LeaderboardPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { useTelemetry } from './hooks/useTelemetry';
-import { Gauge, Wrench, Activity, Flag, Trophy, Settings, Radio } from 'lucide-react';
+import { Gauge, Wrench, Activity, Flag, Settings, Radio } from 'lucide-react';
 import { cn } from './lib/utils';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'hud' | 'tuning' | 'stats' | 'drag' | 'leaderboard' | 'settings'>('hud');
+  const [activeTab, setActiveTab] = useState<'hud' | 'tuning' | 'stats' | 'drag' | 'settings'>('hud');
   const { connected } = useTelemetry();
 
   const tabs = [
     { id: 'hud' as const, label: 'HUD', icon: Gauge },
     { id: 'tuning' as const, label: 'Tuning', icon: Wrench },
-    { id: 'stats' as const, label: 'Vehicle Stats', icon: Activity },
-    { id: 'drag' as const, label: 'Drag Strip', icon: Flag },
-    { id: 'leaderboard' as const, label: 'Leaderboard', icon: Trophy },
+    { id: 'stats' as const, label: 'Vehicle', icon: Activity },
+    { id: 'drag' as const, label: 'Drag', icon: Flag },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
   ];
 
@@ -95,7 +93,6 @@ export function App() {
         {activeTab === 'tuning' && <TuningBenchPage />}
         {activeTab === 'stats' && <VehicleStatsPage />}
         {activeTab === 'drag' && <DragStripPage />}
-        {activeTab === 'leaderboard' && <LeaderboardPage />}
         {activeTab === 'settings' && <SettingsPage />}
       </main>
 

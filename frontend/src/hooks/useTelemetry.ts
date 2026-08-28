@@ -62,19 +62,49 @@ export interface TelemetryData {
 }
 
 export interface AnalyticsData {
-  sprint_active?: boolean;
-  braking_active?: boolean;
-  is_rewinding?: boolean;
-  peak_tire_temp?: number;
-  peak_lat_g?: number;
-  peak_dec_g?: number;
-  top_speed?: number;
-  sprint_times?: Record<string, number>;
-  sprint_status?: string;
+  sprint_status: string;
+  sprint_times: Record<string, number | null>;
+  sprint_active: boolean;
+  braking_active: boolean;
+  peak_tire_temp: number;
+  peak_lat_g: number;
+  peak_dec_g: number;
+  top_speed: number;
 }
 
-function normalizeTelemetry(raw: Record<string, unknown>): TelemetryData {
-  const speed = typeof raw.Speed === 'number' ? raw.Speed : 0;
+export function getTelemetryWsUrl(): string {
+  try {
+    const saved = localStorage.getItem('gridpulse_telemetry_host');
+    if (saved && saved.trim()) {
+      let host = saved.trim();
+      if (host.startsWith('ws://') || host.startsWith('wss://')) {
+        return host.endsWith('/ws') ? host : `${host.replace(/\/$/, '')}/ws`;
+      }
+      if (host.startsWith('http://')) {
+        return `ws://${host.slice(7).replace(/\/$/, '')}/ws`;
+      }
+      if (host.startsWith('https://')) {
+        return `wss://${host.slice(8).replace(/\/$/, '')}/ws`;
+      }
+      return `ws://${host.replace(/\/$/, '')}/ws`;
+    }
+  } catch {}
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.')) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const port = window.location.port ? `:${window.location.port}` : (import.meta.env.DEV ? ':8000' : '');
+      return `${protocol}//${host}${port}/ws`;
+    }
+  }
+
+  // Cloud-hosted fallback (e.g. on gridpulse.wranglr.co.za)
+  return 'ws://localhost:8000/ws';
+}
+
+function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
+  const speed = typeof raw.Speed === 'number' ? raw.Speed : (typeof raw.speed === 'number' ? raw.speed : 0);
   const powerW = typeof raw.Power === 'number' ? raw.Power : 0;
   const torqueNm = typeof raw.Torque === 'number' ? raw.Torque : 0;
   const boost = typeof raw.Boost === 'number' ? raw.Boost : 0;
@@ -86,10 +116,8 @@ function normalizeTelemetry(raw: Record<string, unknown>): TelemetryData {
   const velZ = typeof raw.VelocityZ === 'number' ? raw.VelocityZ : 0;
   const angVelY = typeof raw.AngularVelocityY === 'number' ? raw.AngularVelocityY : 0;
 
-  // True vehicle body slip angle (drift angle) in degrees
   let driftAngle = 0;
   if (speed > 4.0) {
-    // In vehicle coordinate frame: velX = lateral, velZ = forward
     const rawSlip = Math.atan2(Math.abs(velX), Math.abs(velZ)) * (180 / Math.PI);
     driftAngle = Math.min(90, Math.round(rawSlip));
   }
@@ -167,63 +195,75 @@ export function useTelemetry() {
 
   useEffect(() => {
     const connect = () => {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = import.meta.env.DEV
-        ? 'ws://localhost:8000/ws'
-        : `${protocol}//${window.location.host}/ws`;
+      const wsUrl = getTelemetryWsUrl();
 
-      wsRef.current = new WebSocket(wsUrl);
+      try {
+        wsRef.current = new WebSocket(wsUrl);
 
-      wsRef.current.onopen = () => {
-        setConnected(true);
-        setReconnecting(false);
-        reconnectAttemptsRef.current = 0;
-      };
+        wsRef.current.onopen = () => {
+          setConnected(true);
+          setReconnecting(false);
+          reconnectAttemptsRef.current = 0;
+        };
 
-      wsRef.current.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.telemetry) {
-            setTelemetry(normalizeTelemetry(data.telemetry));
-          } else if (data.type === 'telemetry' && data.payload) {
-            setTelemetry(normalizeTelemetry(data.payload));
+        wsRef.current.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.telemetry) {
+              setTelemetry(normalizeTelemetry(data.telemetry));
+            } else if (data.type === 'telemetry' && data.payload) {
+              setTelemetry(normalizeTelemetry(data.payload));
+            }
+
+            if (data.analytics_state) {
+              setAnalytics(data.analytics_state);
+            } else if (data.type === 'analytics' && data.payload) {
+              setAnalytics(data.payload);
+            }
+          } catch (e) {
+            console.error('Error parsing telemetry data:', e);
           }
+        };
 
-          if (data.analytics_state) {
-            setAnalytics(data.analytics_state);
-          } else if (data.type === 'analytics' && data.payload) {
-            setAnalytics(data.payload);
-          }
-        } catch (e) {
-          console.error('Error parsing telemetry data:', e);
-        }
-      };
+        wsRef.current.onclose = () => {
+          setConnected(false);
+          setReconnecting(true);
+          
+          const baseDelay = 1000;
+          const maxDelay = 8000;
+          const attempts = reconnectAttemptsRef.current;
+          const delay = Math.min(baseDelay * Math.pow(1.5, attempts), maxDelay);
+          
+          reconnectAttemptsRef.current += 1;
+          
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, delay);
+        };
 
-      wsRef.current.onclose = () => {
+        wsRef.current.onerror = () => {
+          wsRef.current?.close();
+        };
+      } catch (err) {
+        console.error('WebSocket connection error:', err);
         setConnected(false);
         setReconnecting(true);
-        
-        const baseDelay = 1000;
-        const maxDelay = 10000;
-        const attempts = reconnectAttemptsRef.current;
-        const delay = Math.min(baseDelay * Math.pow(1.5, attempts), maxDelay);
-        
-        reconnectAttemptsRef.current += 1;
-        
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, delay);
-      };
-
-      wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        wsRef.current?.close();
-      };
+      }
     };
 
     connect();
 
+    const handleHostChange = () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+      connect();
+    };
+
+    window.addEventListener('gridpulse_telemetry_host_changed', handleHostChange);
+
     return () => {
+      window.removeEventListener('gridpulse_telemetry_host_changed', handleHostChange);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }

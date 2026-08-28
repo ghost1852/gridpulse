@@ -3,6 +3,7 @@ import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { getCarInfo } from '../../lib/cars';
 import { useUnits } from '../../context/UnitContext';
+import { apiFetch } from '../../lib/api';
 import { History, Trash2 } from 'lucide-react';
 
 interface SprintRun {
@@ -24,7 +25,7 @@ export function RecentRuns({ refreshTrigger }: { refreshTrigger?: any }) {
 
   const fetchRuns = async () => {
     try {
-      const res = await fetch('/api/drag/recent?limit=30');
+      const res = await apiFetch('/api/drag/recent?limit=30');
       const data = await res.json();
       if (data && data.recent_runs) {
         setRuns(data.recent_runs);
@@ -45,7 +46,7 @@ export function RecentRuns({ refreshTrigger }: { refreshTrigger?: any }) {
   const handleClearHistory = async () => {
     if (confirm('Clear all local sprint history?')) {
       try {
-        await fetch('/api/drag/clear', { method: 'POST' });
+        await apiFetch('/api/drag/clear', { method: 'POST' });
         setRuns([]);
       } catch (e) {
         console.error(e);

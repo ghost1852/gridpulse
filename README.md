@@ -65,6 +65,18 @@ A high-performance, real-time Progressive Web App (PWA) and telemetry engine for
 
 ---
 
+## App Previews
+
+| Racing HUD | Tuning Bench | Vehicle Dynamics |
+|:---:|:---:|:---:|
+| <img src="docs/screenshots/hud.png" width="240" alt="Racing HUD" /> | <img src="docs/screenshots/tuning.png" width="240" alt="Tuning Bench" /> | <img src="docs/screenshots/vehicle_stats.png" width="240" alt="Vehicle Dynamics" /> |
+
+| Drag Strip & Time Slip | Unit & Connection Settings |
+|:---:|:---:|
+| <img src="docs/screenshots/drag_strip.png" width="240" alt="Drag Strip" /> | <img src="docs/screenshots/settings.png" width="240" alt="Settings" /> |
+
+---
+
 ## Technical Stack
 
 | Component | Technology |

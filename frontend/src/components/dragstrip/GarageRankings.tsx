@@ -3,6 +3,7 @@ import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { getCarInfo, saveCustomCar } from '../../lib/cars';
 import { useUnits } from '../../context/UnitContext';
+import { apiFetch } from '../../lib/api';
 import { Trophy, Edit3, Crown } from 'lucide-react';
 
 interface FastestCar {
@@ -30,7 +31,7 @@ export function GarageRankings() {
 
   const fetchFastest = async () => {
     try {
-      const res = await fetch('/api/garage/fastest');
+      const res = await apiFetch('/api/garage/fastest');
       const data = await res.json();
       if (data && data.fastest_cars) {
         setCars(data.fastest_cars);
