@@ -292,14 +292,16 @@ export class WebRtcTelemetryClient {
     const code = this.pairingCode!;
     const offerThing = `gridpulse-sig-offer-${code}`;
     const answerThing = `gridpulse-sig-answer-${code}`;
+    const offerId = `${this.sessionId}-${Date.now()}`;
 
     globalOfferCount += 1;
-    this.log(`📡 Publishing ONE SDP offer to broker for room: ${code} (Total offers: ${globalOfferCount})`);
+    this.log(`📡 Publishing ONE SDP offer (offer_id=${offerId}) to broker for room: ${code} (Total offers: ${globalOfferCount})`);
 
-    // 1. Post offer to broker
+    // 1. Post offer to broker with unique offer_id
     const params = new URLSearchParams();
     params.set('sdp', offer.sdp);
     params.set('type', offer.type);
+    params.set('offer_id', offerId);
 
     await fetch(`${SIGNALING_URL_BASE}/dweet/for/${offerThing}`, {
       method: 'POST',
@@ -307,9 +309,9 @@ export class WebRtcTelemetryClient {
       body: params.toString()
     });
 
-    this.log(`⏳ Offer published. Polling for Bridge SDP Answer on ${answerThing}...`);
+    this.log(`⏳ Offer published (offer_id=${offerId}). Polling for Bridge SDP Answer on ${answerThing}...`);
 
-    // 2. Poll for answer
+    // 2. Poll for matching answer
     const startTime = Date.now();
     while (Date.now() - startTime < 30000) {
       try {
@@ -320,9 +322,14 @@ export class WebRtcTelemetryClient {
             const dweet = data.with[0];
             const content = dweet.content;
             if (content && content.type === 'answer' && content.sdp) {
-              globalAnswerCount += 1;
-              this.log(`✅ Bridge SDP Answer received! (Total answers: ${globalAnswerCount}) Establishing Direct P2P...`);
-              return { sdp: content.sdp, type: content.type };
+              // Verify offer_id match if available to avoid applying answers from previous sessions
+              if (content.offer_id && content.offer_id !== offerId) {
+                this.log(`Ignoring previous stale Bridge answer (received offer_id=${content.offer_id}, expected=${offerId}). Awaiting fresh answer...`);
+              } else {
+                globalAnswerCount += 1;
+                this.log(`✅ Matching Bridge SDP Answer received! (Total answers: ${globalAnswerCount}) Establishing Direct P2P...`);
+                return { sdp: content.sdp, type: content.type };
+              }
             }
           }
         }
