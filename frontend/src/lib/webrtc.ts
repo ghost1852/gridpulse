@@ -13,7 +13,7 @@ export interface WebRtcOptions {
   onTransportInfo?: (info: { isDirectP2P: boolean; candidateType: string }) => void;
 }
 
-const SIGNALING_URL_BASE = 'https://ntfy.sh';
+const SIGNALING_URL_BASE = 'https://dweet.cc';
 
 export class WebRtcTelemetryClient {
   private pc: RTCPeerConnection | null = null;
@@ -140,32 +140,31 @@ export class WebRtcTelemetryClient {
 
   private async exchangeSignalingViaBroker(offer: RTCSessionDescription): Promise<RTCSessionDescriptionInit> {
     const code = this.pairingCode!;
-    const offerTopic = `gridpulse-sig-offer-${code}`;
-    const answerTopic = `gridpulse-sig-answer-${code}`;
+    const offerThing = `gridpulse-sig-offer-${code}`;
+    const answerThing = `gridpulse-sig-answer-${code}`;
 
     // 1. Post offer to broker
-    await fetch(`${SIGNALING_URL_BASE}/${offerTopic}`, {
+    const params = new URLSearchParams();
+    params.set('sdp', offer.sdp);
+    params.set('type', offer.type);
+
+    await fetch(`${SIGNALING_URL_BASE}/dweet/for/${offerThing}`, {
       method: 'POST',
-      headers: { 'Title': 'SDP-Offer', 'Priority': 'high' },
-      body: JSON.stringify({ sdp: offer.sdp, type: offer.type })
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString()
     });
 
     // 2. Poll for answer
     const startTime = Date.now();
     while (Date.now() - startTime < 30000) {
       try {
-        const resp = await fetch(`${SIGNALING_URL_BASE}/${answerTopic}/json?poll=1`);
+        const resp = await fetch(`${SIGNALING_URL_BASE}/get/latest/dweet/for/${answerThing}`);
         if (resp.ok) {
-          const text = await resp.text();
-          const lines = text.trim().split('\n');
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            const data = JSON.parse(line);
-            if (data.message) {
-              const parsed = JSON.parse(data.message);
-              if (parsed.type === 'answer') {
-                return parsed;
-              }
+          const data = await resp.json();
+          if (data.this === 'succeeded' && data.with && data.with.length > 0) {
+            const content = data.with[0].content;
+            if (content && content.type === 'answer' && content.sdp) {
+              return { sdp: content.sdp, type: content.type };
             }
           }
         }
@@ -224,15 +223,20 @@ export class WebRtcTelemetryClient {
         return;
       }
 
+      let timeout: any;
       const check = () => {
         if (!this.pc || this.pc.iceGatheringState === 'complete') {
+          clearTimeout(timeout);
           this.pc?.removeEventListener('icegatheringstatechange', check);
           resolve();
         }
       };
 
       this.pc.addEventListener('icegatheringstatechange', check);
-      setTimeout(() => resolve(), 1500);
+      timeout = setTimeout(() => {
+        this.pc?.removeEventListener('icegatheringstatechange', check);
+        resolve();
+      }, 3500);
     });
   }
 
