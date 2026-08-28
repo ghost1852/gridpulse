@@ -3,11 +3,14 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { UnitProvider } from './context/UnitContext'
+import { TelemetryProvider } from './context/TelemetryContext'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <UnitProvider>
-      <App />
+      <TelemetryProvider>
+        <App />
+      </TelemetryProvider>
     </UnitProvider>
   </StrictMode>,
 )

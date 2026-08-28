@@ -5,12 +5,17 @@
  */
 
 export interface WebRtcDiagnostics {
+  sessionId: string;
   iceGatheringState: RTCIceGathererState;
   iceConnectionState: RTCIceConnectionState;
   connectionState: RTCPeerConnectionState;
   signalingState: RTCSignalingState;
   localCandidates: string[];
   remoteCandidates: string[];
+  peerConnectionCount: number;
+  offersPublishedCount: number;
+  answersReceivedCount: number;
+  framesReceivedCount: number;
   selectedPair?: {
     local: string;
     remote: string;
@@ -30,7 +35,14 @@ export interface WebRtcOptions {
 
 const SIGNALING_URL_BASE = 'https://dweet.cc';
 
+// Global single-process metrics to catch any accidental duplicate initializations
+let globalPcCount = 0;
+let globalOfferCount = 0;
+let globalAnswerCount = 0;
+let globalFrameCount = 0;
+
 export class WebRtcTelemetryClient {
+  public readonly sessionId: string;
   private pc: RTCPeerConnection | null = null;
   private dc: RTCDataChannel | null = null;
   private bridgeUrl: string;
@@ -41,12 +53,16 @@ export class WebRtcTelemetryClient {
   private onTransportInfo?: (info: { isDirectP2P: boolean; candidateType: string }) => void;
   private onDiagnostics?: (diag: WebRtcDiagnostics) => void;
   private isDestroyed = false;
+  private isConnecting = false;
   private pingInterval: ReturnType<typeof setInterval> | null = null;
   private iceTimeout: ReturnType<typeof setTimeout> | null = null;
   private localCandidates: string[] = [];
   private remoteCandidates: string[] = [];
 
   constructor(options: WebRtcOptions) {
+    const code = options.pairingCode ? options.pairingCode.replace(/\s+/g, '') : 'LAN';
+    const tag = Math.random().toString(36).substring(2, 6).toUpperCase();
+    this.sessionId = `${code}-${tag}`;
     this.bridgeUrl = (options.bridgeUrl || '').replace(/\/$/, '');
     this.pairingCode = options.pairingCode ? options.pairingCode.replace(/\s+/g, '') : undefined;
     this.onTelemetry = options.onTelemetry;
@@ -56,19 +72,42 @@ export class WebRtcTelemetryClient {
     this.onDiagnostics = options.onDiagnostics;
   }
 
+  private log(message: string, ...args: any[]): void {
+    console.log(`[WebRTC session=${this.sessionId}] ${message}`, ...args);
+  }
+
+  private warn(message: string, ...args: any[]): void {
+    console.warn(`[WebRTC session=${this.sessionId}] ⚠️ ${message}`, ...args);
+  }
+
+  private error(message: string, ...args: any[]): void {
+    console.error(`[WebRTC session=${this.sessionId}] ❌ ${message}`, ...args);
+  }
+
   private reportDiagnostics(): void {
     if (!this.pc || !this.onDiagnostics || this.isDestroyed) return;
     this.onDiagnostics({
+      sessionId: this.sessionId,
       iceGatheringState: this.pc.iceGatheringState,
       iceConnectionState: this.pc.iceConnectionState,
       connectionState: this.pc.connectionState,
       signalingState: this.pc.signalingState,
       localCandidates: [...this.localCandidates],
       remoteCandidates: [...this.remoteCandidates],
+      peerConnectionCount: globalPcCount,
+      offersPublishedCount: globalOfferCount,
+      answersReceivedCount: globalAnswerCount,
+      framesReceivedCount: globalFrameCount,
     });
   }
 
   public async connect(): Promise<void> {
+    if (this.isConnecting) {
+      this.warn('connect() called while already connecting; skipping duplicate invocation.');
+      return;
+    }
+
+    this.isConnecting = true;
     this.isDestroyed = false;
     this.cleanup();
     this.localCandidates = [];
@@ -79,7 +118,8 @@ export class WebRtcTelemetryClient {
     const activeCode = this.pairingCode || (typeof localStorage !== 'undefined' ? localStorage.getItem('gridpulse_pairing_code') : null);
 
     if (isCloudHttps && (!activeCode || !activeCode.trim())) {
-      console.warn('[WebRTC] No pairing code supplied on HTTPS domain. Awaiting QR code scan.');
+      this.warn('No pairing code supplied on HTTPS domain. Awaiting QR code scan.');
+      this.isConnecting = false;
       this.onStateChange('pairing_required');
       return;
     }
@@ -87,7 +127,8 @@ export class WebRtcTelemetryClient {
     this.pairingCode = activeCode ? activeCode.trim() : undefined;
 
     try {
-      console.log('[WebRTC] 🚀 Initializing RTCPeerConnection with Google STUN...');
+      globalPcCount += 1;
+      this.log(`🚀 Initializing RTCPeerConnection (Total PCs created: ${globalPcCount})`);
       this.pc = new RTCPeerConnection({
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -102,15 +143,21 @@ export class WebRtcTelemetryClient {
           const cand = event.candidate as any;
           const type = cand.type || 'unknown';
           const ip = cand.address || cand.ip || 'unknown';
-          console.log(`[WebRTC ICE Local Candidate] Type: ${type} | Address: ${ip}:${cand.port}`);
+          this.log(`[ICE Local Candidate] Type: ${type} | Address: ${ip}:${cand.port}`);
           this.reportDiagnostics();
         }
+      };
+
+      this.pc.onicegatheringstatechange = () => {
+        if (!this.pc) return;
+        this.log(`[ICE Gathering State] ➔ ${this.pc.iceGatheringState.toUpperCase()}`);
+        this.reportDiagnostics();
       };
 
       this.pc.oniceconnectionstatechange = () => {
         if (!this.pc || this.isDestroyed) return;
         const state = this.pc.iceConnectionState;
-        console.log(`[WebRTC ICE Connection State] -> ${state.toUpperCase()}`);
+        this.log(`[ICE Connection State] ➔ ${state.toUpperCase()}`);
         this.reportDiagnostics();
 
         if (state === 'connected' || state === 'completed') {
@@ -127,7 +174,7 @@ export class WebRtcTelemetryClient {
       this.pc.onconnectionstatechange = () => {
         if (!this.pc || this.isDestroyed) return;
         const state = this.pc.connectionState;
-        console.log(`[WebRTC PeerConnection State] -> ${state.toUpperCase()}`);
+        this.log(`[PeerConnection State] ➔ ${state.toUpperCase()}`);
         this.onStateChange(state);
         this.reportDiagnostics();
 
@@ -139,7 +186,7 @@ export class WebRtcTelemetryClient {
       };
 
       // Unordered, zero-retransmission data channel for minimal telemetry jitter (<1ms)
-      console.log('[WebRTC] Creating DataChannel "telemetry" (unordered, maxRetransmits=0)...');
+      this.log('Creating DataChannel "telemetry" (unordered, maxRetransmits=0)...');
       this.dc = this.pc.createDataChannel('telemetry', {
         ordered: false,
         maxRetransmits: 0
@@ -147,7 +194,7 @@ export class WebRtcTelemetryClient {
 
       this.dc.onopen = () => {
         if (!this.isDestroyed) {
-          console.log('[WebRTC] 🎉 DataChannel OPEN! Direct P2P telemetry streaming active.');
+          this.log('🎉 DataChannel OPEN! Direct P2P telemetry streaming active.');
           this.onStateChange('channel_open');
           this.startPing();
           this.checkTransportStats();
@@ -157,12 +204,13 @@ export class WebRtcTelemetryClient {
       this.dc.onclose = () => {
         this.stopPing();
         if (!this.isDestroyed) {
-          console.log('[WebRTC] DataChannel closed.');
+          this.log('DataChannel closed.');
           this.onStateChange('disconnected');
         }
       };
 
       this.dc.onmessage = (event) => {
+        globalFrameCount += 1;
         if (typeof event.data === 'string' && event.data.startsWith('__pong__:')) {
           const sentTs = Number(event.data.split(':', 2)[1]);
           if (!isNaN(sentTs)) {
@@ -181,12 +229,12 @@ export class WebRtcTelemetryClient {
       };
 
       // 1. Create SDP Offer
-      console.log('[WebRTC] Generating local SDP Offer...');
+      this.log('Generating local SDP Offer...');
       const offer = await this.pc.createOffer();
       await this.pc.setLocalDescription(offer);
 
       // 2. Wait for non-trickle ICE candidates to gather completely
-      console.log('[WebRTC] Gathering local ICE candidates (non-trickle mode)...');
+      this.log('Gathering local ICE candidates (non-trickle mode)...');
       await this.waitForIceGathering();
 
       const localSdp = this.pc.localDescription;
@@ -196,7 +244,7 @@ export class WebRtcTelemetryClient {
       let answerSdp: RTCSessionDescriptionInit;
 
       if (window.location.protocol === 'http:' && this.bridgeUrl) {
-        console.log(`[WebRTC] Using Direct Local LAN signaling at ${this.bridgeUrl}...`);
+        this.log(`Using Direct Local LAN signaling at ${this.bridgeUrl}...`);
         const res = await fetch(`${this.bridgeUrl}/api/webrtc/offer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -205,25 +253,25 @@ export class WebRtcTelemetryClient {
         if (!res.ok) throw new Error(`Bridge rejected offer: ${res.statusText}`);
         answerSdp = await res.json();
       } else {
-        console.log(`[WebRTC] Using Ephemeral Control Plane Signaling (Room: ${this.pairingCode})...`);
+        this.log(`Using Ephemeral Control Plane Signaling (Room: ${this.pairingCode})...`);
         answerSdp = await this.exchangeSignalingViaBroker(localSdp);
       }
 
       // Parse and log remote candidates
       const remoteLines = (answerSdp.sdp || '').split('\n');
       this.remoteCandidates = remoteLines.filter(l => l.includes('a=candidate:')).map(l => l.trim());
-      console.log(`[WebRTC] Remote Answer contains ${this.remoteCandidates.length} candidate(s):`);
-      this.remoteCandidates.forEach(c => console.log(`  [Remote Candidate] ${c}`));
+      this.log(`Remote Answer contains ${this.remoteCandidates.length} candidate(s):`);
+      this.remoteCandidates.forEach(c => this.log(`  [Remote Candidate] ${c}`));
 
       // 4. Apply remote description
-      console.log('[WebRTC] Applying Bridge SDP Answer to local peer connection...');
+      this.log('Applying Bridge SDP Answer to local peer connection...');
       await this.pc.setRemoteDescription(new RTCSessionDescription(answerSdp));
       this.reportDiagnostics();
 
       // 5. Start explicit 15s ICE connectivity watchdog
       this.iceTimeout = setTimeout(() => {
         if (this.pc && this.pc.iceConnectionState !== 'connected' && this.pc.iceConnectionState !== 'completed') {
-          console.warn(`[WebRTC] ⚠️ ICE connectivity timed out (Current state: ${this.pc.iceConnectionState}).`);
+          this.warn(`ICE connectivity watchdog timed out (State: ${this.pc.iceConnectionState}).`);
           if (!this.isDestroyed) {
             this.onStateChange('error');
           }
@@ -231,10 +279,12 @@ export class WebRtcTelemetryClient {
       }, 15000);
 
     } catch (err) {
-      console.error('[WebRTC] Fatal error during connection setup:', err);
+      this.error('Fatal error during connection setup:', err);
       if (!this.isDestroyed) {
         this.onStateChange('error');
       }
+    } finally {
+      this.isConnecting = false;
     }
   }
 
@@ -243,7 +293,8 @@ export class WebRtcTelemetryClient {
     const offerThing = `gridpulse-sig-offer-${code}`;
     const answerThing = `gridpulse-sig-answer-${code}`;
 
-    console.log(`[WebRTC] 📡 Publishing SDP offer to broker for room: ${code}`);
+    globalOfferCount += 1;
+    this.log(`📡 Publishing ONE SDP offer to broker for room: ${code} (Total offers: ${globalOfferCount})`);
 
     // 1. Post offer to broker
     const params = new URLSearchParams();
@@ -256,7 +307,7 @@ export class WebRtcTelemetryClient {
       body: params.toString()
     });
 
-    console.log(`[WebRTC] ⏳ Offer published. Polling for Bridge SDP Answer on ${answerThing}...`);
+    this.log(`⏳ Offer published. Polling for Bridge SDP Answer on ${answerThing}...`);
 
     // 2. Poll for answer
     const startTime = Date.now();
@@ -269,13 +320,14 @@ export class WebRtcTelemetryClient {
             const dweet = data.with[0];
             const content = dweet.content;
             if (content && content.type === 'answer' && content.sdp) {
-              console.log('[WebRTC] ✅ Bridge SDP Answer received! Establishing Direct P2P DataChannel...');
+              globalAnswerCount += 1;
+              this.log(`✅ Bridge SDP Answer received! (Total answers: ${globalAnswerCount}) Establishing Direct P2P...`);
               return { sdp: content.sdp, type: content.type };
             }
           }
         }
       } catch (pollErr) {
-        console.warn('[WebRTC] Polling tick error:', pollErr);
+        this.warn('Polling tick error:', pollErr);
       }
       await new Promise((r) => setTimeout(r, 1000));
     }
@@ -316,7 +368,7 @@ export class WebRtcTelemetryClient {
             candidateType = remoteCandidate.candidateType || 'host';
             isDirect = candidateType === 'host' || candidateType === 'srflx' || candidateType === 'prflx';
           }
-          console.log(`[WebRTC Transport] Active Candidate Pair: ${localCandidate?.ip || localCandidate?.address}:${localCandidate?.port} ➔ ${remoteCandidate?.ip || remoteCandidate?.address}:${remoteCandidate?.port} (${candidateType})`);
+          this.log(`[Transport Stats] Active Candidate Pair: ${localCandidate?.ip || localCandidate?.address}:${localCandidate?.port} ➔ ${remoteCandidate?.ip || remoteCandidate?.address}:${remoteCandidate?.port} (${candidateType}) [state: ${report.state}]`);
         }
       });
 
