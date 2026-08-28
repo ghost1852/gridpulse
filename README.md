@@ -1,174 +1,163 @@
-# GridPulse - Forza Horizon & Motorsport Telemetry Dashboard
+# GridPulse — Real-Time Forza Telemetry Suite & Mobile PWA
 
-A high-performance, real-time Progressive Web App (PWA) and telemetry engine for Forza Horizon (FH4, FH5, FH6) and Forza Motorsport. GridPulse ingests raw 60Hz UDP data-out packets from the game engine, computes precision vehicle dynamics, tracks drag strip sprints, provides chassis engineering diagnostics, and powers local and garage leaderboards.
+> **Zero Cloud Telemetry • 100% Privacy • Sub-millisecond Local Streaming • Standalone Windows Executable**
+
+GridPulse is a high-performance, real-time motorsport telemetry dashboard, drag strip timer, and chassis tuning bench engineered specifically for **Forza Horizon (FH4, FH5, FH6)** and **Forza Motorsport**.
+
+It ingests the native 60Hz Little-Endian UDP data-out packets streamed directly from the Forza physics engine, computes high-frequency vehicle dynamics (suspension travel, tire surface temperatures, slip vectors, G-forces, RPM), and broadcasts real-time telemetry to your phone, tablet, or browser mounted directly to your sim wheel.
 
 ---
 
 ## Architecture Overview
 
+GridPulse operates on a **Zero-VPS, Local Edge Architecture**. No telemetry ever touches the internet or third-party servers.
+
 ```
- +------------------------+
- | Forza Horizon / FM     |  (60Hz Little-Endian UDP)
- | Data Out: Port 20066   |
- +-----------+------------+
-             |
-             v
- +------------------------+
- | Python FastAPI Backend |
- | - UDP Socket Listener  |
- | - Packet Struct Parser |
- | - Real-Time Analytics  |
- | - SQLite Storage       |
- | - WebSocket Broadcaster|
- +-----------+------------+
-             |  (WebSocket /ws & REST API /api)
-             v
- +------------------------+
- | React 19 + TypeScript  |
- | - Real-Time Racing HUD |
- | - Time Slip & Drag Run |
- | - Chassis Tuning Bench |
- | - Stint Telemetry CSV  |
- +------------------------+
+   ┌─────────────────────────────────────────────────────────────┐
+   │                       YOUR GAMING PC                        │
+   │                                                             │
+   │  ┌──────────────────────┐         ┌──────────────────────┐  │
+   │  │ Forza Horizon / FM   │         │ GridPulse-Bridge.exe │  │
+   │  │                      │ 60Hz UDP│                      │  │
+   │  │ Data Out: 127.0.0.1  ├────────►│ - UDP Socket Listener│  │
+   │  │ Port: 20066          │  (Port  │ - Packet Parser (324B)│  │
+   │  └──────────────────────┘  20066) │ - Drag Strip Engine  │  │
+   │                                   │ - Local SQLite DB    │  │
+   │                                   │ - HTTP & WS Server   │  │
+   │                                   └──────────┬───────────┘  │
+   └──────────────────────────────────────────────┼──────────────┘
+                                                  │
+                                   Local Wi-Fi / LAN Streaming
+                                   (http://<PC_IP>:8000 & /ws)
+                                                  │
+                                                  ▼
+                               ┌──────────────────────────────────┐
+                               │     PHONE / SIM WHEEL MOUNT      │
+                               │                                  │
+                               │  GridPulse PWA (Safari / Chrome) │
+                               │  - 60Hz Racing HUD Dashboard     │
+                               │  - Drag Strip & Time Slip Card   │
+                               │  - Chassis Tuning & Camber Bench │
+                               │  - Vehicle Stint CSV Logger      │
+                               └──────────────────────────────────┘
 ```
 
 ---
 
-## Key Features
+## Quick Start (60 Seconds)
 
-### 1. High-Precision Racing HUD
-- Digital precision speedometer with instant MPH and KM/H toggling.
-- 16-segment LED shift light tachometer calibrated with vehicle redline thresholds.
-- Four-corner tire surface temperature heatmap with optimal compound operating windows.
-- Dual-axis G-Force friction circle tracking lateral and longitudinal acceleration.
-- Dynamic throttle, brake threshold, and clutch input telemetry meters.
-- Chassis alert banner detecting bottom-out events, brake lockups, and thermal overload.
+### Step 1: Run the GridPulse Bridge on your PC
+1. Download **`GridPulse-Bridge-Windows.zip`** from [GitHub Releases](https://github.com/ghost1852/gridpulse/releases) or the [Live Site](https://gridpulse.wranglr.co.za).
+2. Unzip the folder and double-click **`GridPulse-Bridge.exe`**.
+   *(No Python or Node.js installation required!)*
+3. A terminal window will open showing your LAN Gateway URL and a QR Code.
 
-### 2. Time Attack & Drag Strip
-- Automatic standstill staging and throttle-launch detection using 60Hz physics clock synchronization.
-- Real-time milestone capture: 0-60 MPH (0-100 KM/H), 0-100 MPH (0-160 KM/H), 60-130 MPH (100-200 KM/H), 1/4 Mile (402m), and 1/2 Mile (805m).
-- Numerical wheel speed distance integration for accurate quarter-mile timing on any map location.
-- Persistent time slip display that retains previous run metrics while staged at the starting line.
-- Garage leaderboard ranking fleet vehicles by quarter-mile elapsed times and trap speeds.
+### Step 2: Configure Forza In-Game Telemetry
+In **Forza Horizon 4 / 5** or **Forza Motorsport**:
+1. Go to **Settings** > **HUD and Gameplay** > Scroll down to **Telemetry**.
+2. Set the following options:
+   * **Data Out**: `ON`
+   * **Data Out IP Address**:
+     * Playing on PC: `127.0.0.1`
+     * Playing on Xbox: Enter your PC's LAN IP (e.g. `192.168.88.4` shown in the bridge window)
+   * **Data Out IP Port**: `20066`
+   * **Data Out Packet Format**: `Car Dash` (Default)
 
-### 3. Chassis Tuning & Engineering Bench
-- Mathematical setup calculator generating spring rates, anti-roll bars, damping, and camber from vehicle weight distribution and drivetrain configuration.
-- Real-time telemetry diagnostic logger tracking bottom-out spikes, axle thermal imbalances, understeer, and power oversteer.
-- Visual slider interface overlaying live engineering target recommendations against current baseline setups.
-- One-tap vehicle configuration for tire compounds (Slick, Semi-Slick, Sport, Street, Drift, Rally, Drag, Off-Road) and aerodynamics.
-- Persistent garage profiles retaining custom car names, manufacturers, and tune sheets.
-
-### 4. Vehicle Stint Telemetry & CSV Export
-- Live stint recording capturing high-frequency samples of speed, RPM, G-forces, tire thermals, and suspension travel.
-- Stint summary debriefs with top speed, peak lateral Gs, estimated mileage, and bottom-out counts.
-- Full CSV export and markdown debrief generator for race engineers and league competition logs.
+### Step 3: Open on Your Phone / Wheel Mount
+1. Make sure your phone is connected to the **same Wi-Fi network** as your PC.
+2. Scan the QR code shown in the bridge terminal, or open your PC's LAN address in your phone's browser:
+   ```
+   http://192.168.88.4:8000
+   ```
+3. *(Optional)* Tap **Share > Add to Home Screen** on iOS Safari or **Install App** on Android Chrome to run GridPulse as a fullscreen standalone PWA!
 
 ---
 
-## App Previews
+## Core Features
 
-| Racing HUD | Tuning Bench | Vehicle Dynamics |
-|:---:|:---:|:---:|
-| <img src="docs/screenshots/hud.png" width="240" alt="Racing HUD" /> | <img src="docs/screenshots/tuning.png" width="240" alt="Tuning Bench" /> | <img src="docs/screenshots/vehicle_stats.png" width="240" alt="Vehicle Dynamics" /> |
+### 🏎️ 1. High-Precision Racing HUD
+* **Digital Speedometer**: Switch instantly between MPH and KM/H.
+* **16-Segment Tachometer**: Real-time RPM bar with redline strobe & optimal gear shift indicators.
+* **4-Corner Tire Thermals**: Live tire surface temperatures (°F/°C) with compound color-coding (Cold, Optimal, Hot, Overheated).
+* **Friction Circle (G-Force)**: Dual-axis accelerometer tracking lateral cornering Gs and longitudinal braking/acceleration forces.
+* **Live Pedal Ingress**: Real-time throttle, threshold braking, and clutch telemetry bars.
+* **Chassis Alert Banner**: Real-time alerts for bottom-out compression, brake lockup, and tire thermal overload.
 
-| Drag Strip & Time Slip | Unit & Connection Settings |
-|:---:|:---:|
-| <img src="docs/screenshots/drag_strip.png" width="240" alt="Drag Strip" /> | <img src="docs/screenshots/settings.png" width="240" alt="Settings" /> |
+### 🏁 2. Precision Drag Strip & Time Slip Engine
+* **Automatic Staging Detection**: Senses vehicle standstill and arms the timing gate.
+* **Milestone Timing**: 0-60 MPH (0-100 KM/H), 0-100 MPH (0-160 KM/H), 60-130 MPH (100-200 KM/H), 1/4 Mile (402m), and 1/2 Mile (805m).
+* **Wheel-Speed Integration**: Precise trap speed and elapsed time calculated anywhere on the map.
+* **Persistent Time Slip**: Keeps your latest drag slip visible at the starting line until your next launch.
+* **Garage Fleet Leaderboard**: Stores and ranks your fastest personal runs per vehicle in local SQLite.
+
+### 🔧 3. Chassis Tuning & Suspension Diagnostics
+* **Target Setup Calculator**: Computes mathematically optimal spring rates, anti-roll bars, rebound/bump damping, and camber angles based on vehicle weight distribution and drivetrain.
+* **Live Stroke Diagnostics**: Real-time suspension travel meters (meters & normalized 0.0–1.0) with bottom-out warning counters.
+* **Tire Slip Vector Analysis**: Front/rear slip ratio and slip angle differential tracking to diagnose understeer vs. oversteer tendencies.
+* **Compound Customizer**: Preset support for Slick, Semi-Slick, Sport, Street, Drift, Rally, Drag, and Off-Road tires.
+
+### 📈 4. Vehicle Stints & CSV Telemetry Export
+* **Live Stint Recording**: Capture 60Hz telemetry data points during practice laps, endurance stints, or drag sessions.
+* **Session Debriefs**: Top speed, peak lateral Gs, bottom-out events, and average tire temperatures.
+* **CSV Export**: 1-click download of full high-frequency telemetry logs for external analysis in Excel, MoTeC, or Python.
 
 ---
 
-## Technical Stack
+## Developer / Source Setup
 
-| Component | Technology |
-|---|---|
-| Frontend Framework | React 19, TypeScript, Vite |
-| Styling & Theme | Tailwind CSS v4, Motorsport JetBrains Mono Typography |
-| Animation & Icons | Framer Motion, Lucide Icons |
-| Backend Server | FastAPI, Uvicorn, Python 3.10+ |
-| Real-Time Transport | Native WebSockets, Async UDP Socket Protocol |
-| Database Layer | Async SQLite (aiosqlite) |
-| Client Storage | IndexedDB / LocalStorage for garage and tune sheets |
-
----
-
-## Getting Started
+If you wish to run or develop GridPulse from source:
 
 ### Prerequisites
-- Python 3.10 or higher
-- Node.js 18 or higher (Node 20+ recommended)
-- PC / Xbox running Forza Horizon 4/5 or Forza Motorsport on the same local network
+* **Python 3.10+**
+* **Node.js 18+**
 
-### 1. Backend Installation & Setup
-
+### Backend Setup
 ```bash
-# Navigate to backend directory
 cd backend
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Option A: Run with real game telemetry (Default UDP port 20066)
-python server.py --no-simulate
+# Run with real game telemetry (Port 20066 UDP)
+python server.py
 
-# Option B: Run in simulation mode (no game required)
+# Or run with built-in physics simulator (no game required)
 python server.py --simulate
 ```
 
-### 2. Frontend Installation & Build
-
+### Frontend Setup
 ```bash
-# Navigate to frontend directory
 cd frontend
-
-# Install node packages
 npm install
-
-# Start development server
 npm run dev
 ```
 
-For production deployment:
+### Building the Standalone Executable
 ```bash
-npm run build
-# The FastAPI backend serves static assets directly from frontend/dist/ at http://localhost:8000
+cd backend
+pyinstaller --noconfirm --onedir --name "GridPulse-Bridge" --add-data "..\frontend\dist;frontend\dist" server.py
 ```
 
 ---
 
-## In-Game Telemetry Configuration
+## UDP Packet Specification (324 Bytes Little-Endian)
 
-To transmit telemetry from Forza to GridPulse:
+GridPulse decodes the official Forza "Car Dash" packet structure:
 
-1. Open **Forza Horizon 4 / 5** or **Forza Motorsport**.
-2. Navigate to **Settings** > **HUD and Gameplay**.
-3. Scroll down to the **Telemetry** section and configure:
-   - **Data Out**: `ON`
-   - **Data Out IP Address**:
-     - Running on the same PC: `127.0.0.1`
-     - Running on a separate PC / Phone / Tablet: Enter the local IP of the machine running GridPulse (e.g. `192.168.1.100`)
-   - **Data Out IP Port**: `20066`
-   - **Data Out Packet Format**: `Car Dash` (Default)
-
----
-
-## API Endpoints
-
-### REST API
-
-- `GET /api/status` - Server health, active packet throughput, and connected vehicle ordinal.
-- `GET /api/drag/recent?limit=30` - Recent sprint runs and milestone telemetry records.
-- `GET /api/garage/fastest` - Garage leaderboard ranked by vehicle fastest quarter-mile times.
-- `POST /api/drag/reset` - Reset active sprint timers.
-- `POST /api/drag/clear` - Clear local sprint history database.
-- `GET /api/leaderboard?category=0-60&car_class=S1` - Category records filtered by car class.
-- `GET /api/daily-awards` - Peak telemetry award leaders for the active session.
-
-### WebSocket Stream
-
-- `WS /ws` - 60Hz JSON stream containing parsed telemetry frames, vehicle class, speed, temperatures, suspension travel, and live sprint timing state.
+| Byte Offset | Type | Field Name | Description |
+|:---:|:---:|---|---|
+| `0–3` | `s32` | `IsRaceOn` | 1 = Active Driving, 0 = In Menus |
+| `4–7` | `u32` | `TimestampMS` | Monotonic physics clock |
+| `8–19` | `f32[3]` | `EngineMaxRpm`, `EngineIdleRpm`, `CurrentEngineRpm` | Engine RPM profile |
+| `20–31` | `f32[3]` | `AccelerationX`, `AccelerationY`, `AccelerationZ` | Local vehicle G-forces |
+| `32–43` | `f32[3]` | `VelocityX`, `VelocityY`, `VelocityZ` | Velocity vectors (m/s) |
+| `68–83` | `f32[4]` | `NormalizedSuspensionTravel[FL, FR, RL, RR]` | 0.0 (fully extended) to 1.0 (bottomed out) |
+| `84–99` | `f32[4]` | `TireSlipRatio[FL, FR, RL, RR]` | Longitudinal tire slip |
+| `212–223` | `s32[3]` | `CarOrdinal`, `CarClass`, `CarPerformanceIndex` | Vehicle metadata (Class D–X, PI 100–999) |
+| `256–267` | `f32[3]` | `Speed`, `Power`, `Torque` | Speed (m/s), Power (W), Torque (N·m) |
+| `268–283` | `f32[4]` | `TireTemp[FL, FR, RL, RR]` | Surface tire temperatures (°F) |
+| `315–320` | `u8[5], s8` | `Accel`, `Brake`, `Clutch`, `HandBrake`, `Gear`, `Steer` | Driver pedal and steering inputs |
 
 ---
 
 ## License
 
-MIT License. Developed for motorsport enthusiasts and simulation racers.
+MIT License. Open source and built with ❤️ for sim racers, tuners, and motorsport enthusiasts.

@@ -191,29 +191,29 @@ def get_lan_ip() -> str:
 
 def print_terminal_banner(lan_ip: str, port: int, udp_port: int):
     clean_code = PAIRING_CODE.replace(" ", "")
-    pairing_url = f"https://gridpulse.wranglr.co.za?bridge=http://{lan_ip}:{port}&code={clean_code}"
+    direct_url = f"http://{lan_ip}:{port}"
     print("\n" + "=" * 60)
     print("             GRIDPULSE TELEMETRY BRIDGE v2.1")
     print("=" * 60)
-    print(f" * PAIRING CODE          : {PAIRING_CODE}")
+    print(f" * LAN Dashboard URL    : {direct_url}")
     print(f" * UDP Telemetry Ingress : 0.0.0.0:{udp_port}")
-    print(f" * WebRTC DataChannel    : ACTIVE (P2P Encrypted)")
-    print(f" * LAN Gateway           : http://{lan_ip}:{port}")
+    print(f" * WebRTC / WebSocket   : ACTIVE (Port {port})")
+    print(f" * Session Pairing Code : {PAIRING_CODE}")
     print("=" * 60)
-    print(" FORZA IN-GAME SETUP (HUD & Gameplay > Telemetry):")
+    print(" FORZA IN-GAME SETUP (Settings > HUD & Gameplay > Telemetry):")
     print(f"   Data Out            : ON")
     print(f"   Data Out IP Address : 127.0.0.1 (or {lan_ip})")
     print(f"   Data Out IP Port    : {udp_port}")
     print("=" * 60)
-    print(" SCAN WITH PHONE CAMERA TO AUTO-PAIR INSTANTLY:")
+    print(" SCAN WITH PHONE CAMERA TO OPEN DASHBOARD:")
     try:
         import qrcode
         qr = qrcode.QRCode(box_size=1, border=1)
-        qr.add_data(pairing_url)
+        qr.add_data(direct_url)
         qr.print_ascii(invert=True)
     except Exception:
         pass
-    print(f" Direct Link: {pairing_url}")
+    print(f" Open on Phone: {direct_url}")
     print("=" * 60 + "\n")
 
 # =========================================================================
@@ -385,15 +385,26 @@ async def websocket_endpoint(websocket: WebSocket):
 # =========================================================================
 # STATIC FRONTEND MOUNT (For local standalone single-server mode)
 # =========================================================================
-if getattr(sys, 'frozen', False):
-    bundle_dir = Path(getattr(sys, '_MEIPASS', Path(sys.executable).parent))
-    frontend_dist = bundle_dir / "frontend" / "dist"
-    if not frontend_dist.exists():
-        frontend_dist = Path(sys.executable).parent / "frontend" / "dist"
-else:
-    frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+def get_frontend_dist() -> Path:
+    if getattr(sys, 'frozen', False):
+        base_dir = Path(sys.executable).parent
+        meipass = getattr(sys, '_MEIPASS', None)
+        candidates = [
+            base_dir / "frontend" / "dist",
+            base_dir / "_internal" / "frontend" / "dist",
+        ]
+        if meipass:
+            candidates.insert(0, Path(meipass) / "frontend" / "dist")
+        for c in candidates:
+            if c.exists() and (c / "index.html").exists():
+                return c
+        return candidates[0]
+    else:
+        return Path(__file__).parent.parent / "frontend" / "dist"
 
-if frontend_dist.exists():
+frontend_dist = get_frontend_dist()
+
+if frontend_dist.exists() and (frontend_dist / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
@@ -401,6 +412,7 @@ if frontend_dist.exists():
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
         return FileResponse(frontend_dist / "index.html")
+
 
 def main():
     parser = argparse.ArgumentParser(description="GridPulse Forza Telemetry Engine")
@@ -427,3 +439,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

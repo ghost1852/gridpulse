@@ -165,9 +165,9 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                   Phone / Wheel Mount
                 </span>
               </div>
-              <h3 className="font-bold text-white text-base">Pair &amp; Drive</h3>
+              <h3 className="font-bold text-white text-base">Open &amp; Drive</h3>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Scan the QR code shown in the bridge window with your phone, mount your phone to your steering wheel, and hit the track with live telemetry!
+                Scan the QR code in the bridge terminal, or type your PC's LAN IP (e.g. <strong>http://192.168.88.4:8000</strong>) into your phone browser. Tap <em>Add to Home Screen</em> for fullscreen PWA!
               </p>
               <button
                 onClick={onOpenDashboard}
@@ -227,10 +227,10 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             <div className="bg-[#0e0e16] border border-white/10 rounded-xl p-4 space-y-2">
               <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
                 <ShieldCheck size={18} />
-                <span>100% Privacy &amp; Offline PWA</span>
+                <span>Zero-VPS &amp; 100% Local Privacy</span>
               </div>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Your telemetry stays on your local device. Encrypted direct WebRTC / WebSocket channels ensure zero telemetry ever touches the cloud.
+                Your telemetry stays on your local Wi-Fi. Direct high-speed LAN WebSocket and WebRTC streams ensure zero telemetry ever touches the cloud.
               </p>
             </div>
           </div>
@@ -242,13 +242,21 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
         <Card className="p-6 bg-[#0e0e16] border-white/10 space-y-4 font-mono">
           <h2 className="text-lg font-black text-white uppercase tracking-wider flex items-center gap-2">
             <Activity size={18} className="text-emerald-400" />
-            <span>ABOUT GRIDPULSE</span>
+            <span>ABOUT GRIDPULSE &amp; ARCHITECTURE</span>
           </h2>
           
           <p className="text-xs text-gray-300 leading-relaxed">
             GridPulse is an open-source motorsport telemetry platform engineered specifically for the <strong>Forza Horizon</strong> and <strong>Forza Motorsport</strong> series. 
-            It intercepts the native 324-byte UDP data packet streamed directly from the game engine at 60 Hz, decodes high-frequency vehicle dynamics (suspension travel, tire surface temps, slip vectors, G-forces, RPM), and provides real-time driver telemetry.
+            It intercepts the native 324-byte UDP data packet streamed directly from the game engine at 60 Hz, decodes high-frequency vehicle dynamics (suspension travel, tire surface temps, slip vectors, G-forces, RPM), and provides real-time driver telemetry directly to your phone mounted to your wheel.
           </p>
+
+          <div className="bg-black/50 border border-white/10 rounded-xl p-3.5 space-y-1.5 text-xs text-gray-300">
+            <div className="text-emerald-400 font-bold">⚡ Zero-VPS Local Edge Pipeline:</div>
+            <div className="text-gray-400 text-[11px] leading-relaxed">
+              <code>Forza (UDP 20066) ➔ GridPulse-Bridge.exe (PC) ➔ Local Wi-Fi (HTTP/WS) ➔ Phone PWA</code>.
+              Because all communication happens over your local home network, latency is sub-millisecond and zero bytes of personal data are ever uploaded to cloud servers.
+            </div>
+          </div>
 
           <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-400">
             <span>GridPulse Telemetry Suite v2.1 • Motorsport Edition</span>
