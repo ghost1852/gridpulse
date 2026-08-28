@@ -26,6 +26,16 @@ class WebRtcHost:
             logger.info(f"WebRTC DataChannel opened: {channel.label}")
             self.active_datachannels.add(channel)
 
+            @channel.on("message")
+            def on_message(message):
+                # Respond to ping for precise RTT latency measurement
+                if isinstance(message, str) and message.startswith("__ping__:"):
+                    try:
+                        ts = message.split(":", 1)[1]
+                        channel.send(f"__pong__:{ts}")
+                    except Exception:
+                        pass
+
             @channel.on("close")
             def on_close():
                 logger.info(f"WebRTC DataChannel closed: {channel.label}")

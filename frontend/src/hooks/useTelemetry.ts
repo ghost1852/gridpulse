@@ -108,7 +108,6 @@ export function getTelemetryWsUrl(): string {
     } catch {}
   }
 
-  // Cloud-hosted fallback (e.g. on gridpulse.wranglr.co.za)
   return 'ws://localhost:8000/ws';
 }
 
@@ -164,8 +163,8 @@ function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
     yaw: typeof raw.Yaw === 'number' ? raw.Yaw : (typeof raw.yaw === 'number' ? raw.yaw : 0),
     pitch: typeof raw.Pitch === 'number' ? raw.Pitch : (typeof raw.pitch === 'number' ? raw.pitch : 0),
     roll: typeof raw.Roll === 'number' ? raw.Roll : (typeof raw.roll === 'number' ? raw.roll : 0),
-    drift_angle: driftDeg,
-    yaw_rate_degs: yawRateDeg,
+    drift_angle: typeof raw.drift_angle === 'number' ? raw.drift_angle : Math.round(driftDeg * 10) / 10,
+    yaw_rate_degs: typeof raw.yaw_rate_degs === 'number' ? raw.yaw_rate_degs : Math.round(yawRateDeg * 10) / 10,
     surface_rumble_fl: typeof raw.SurfaceRumbleFrontLeft === 'number' ? raw.SurfaceRumbleFrontLeft : 0,
     surface_rumble_fr: typeof raw.SurfaceRumbleFrontRight === 'number' ? raw.SurfaceRumbleFrontRight : 0,
     surface_rumble_rl: typeof raw.SurfaceRumbleRearLeft === 'number' ? raw.SurfaceRumbleRearLeft : 0,
@@ -195,14 +194,27 @@ export function useTelemetry() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
-  const [transport, setTransport] = useState<'webrtc' | 'websocket'>('websocket');
+  const [transport, setTransport] = useState<'webrtc_p2p' | 'websocket_local' | 'disconnected'>('disconnected');
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [isDirectP2P, setIsDirectP2P] = useState(true);
+  const [packetRateHz, setPacketRateHz] = useState<number>(0);
   
   const wsRef = useRef<WebSocket | null>(null);
   const webrtcClientRef = useRef<WebRtcTelemetryClient | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reconnectAttemptsRef = useRef(0);
+  const packetCountRef = useRef(0);
+  const lastPacketTimeRef = useRef(Date.now());
 
   const handleIncomingTelemetry = (data: any) => {
+    packetCountRef.current += 1;
+    const now = Date.now();
+    if (now - lastPacketTimeRef.current >= 1000) {
+      setPacketRateHz(packetCountRef.current);
+      packetCountRef.current = 0;
+      lastPacketTimeRef.current = now;
+    }
+
     if (data.telemetry) {
       setTelemetry(normalizeTelemetry(data.telemetry));
     } else if (data.type === 'telemetry' && data.payload) {
@@ -221,8 +233,20 @@ export function useTelemetry() {
       const apiBase = getApiBaseUrl();
       const wsUrl = getTelemetryWsUrl();
 
-      // 1. Attempt High-Speed WebRTC DataChannel First
-      if (typeof RTCPeerConnection !== 'undefined' && apiBase) {
+      let pairingCode: string | undefined;
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const codeParam = params.get('code');
+        if (codeParam && codeParam.trim()) {
+          pairingCode = codeParam.trim().replace(/\s+/g, '');
+          localStorage.setItem('gridpulse_pairing_code', pairingCode);
+        } else {
+          pairingCode = localStorage.getItem('gridpulse_pairing_code') || undefined;
+        }
+      } catch {}
+
+      // 1. Attempt WebRTC DataChannel First (P2P zero-cloud path)
+      if (typeof RTCPeerConnection !== 'undefined') {
         try {
           if (webrtcClientRef.current) {
             webrtcClientRef.current.cleanup();
@@ -230,20 +254,30 @@ export function useTelemetry() {
 
           webrtcClientRef.current = new WebRtcTelemetryClient({
             bridgeUrl: apiBase,
+            pairingCode: pairingCode,
             onTelemetry: (payload) => {
               setConnected(true);
               setReconnecting(false);
-              setTransport('webrtc');
+              setTransport('webrtc_p2p');
               handleIncomingTelemetry(payload);
+            },
+            onLatency: (rtt) => {
+              setLatencyMs(Math.round(rtt * 10) / 10);
+            },
+            onTransportInfo: (info) => {
+              setIsDirectP2P(info.isDirectP2P);
             },
             onStateChange: (state) => {
               if (state === 'channel_open' || state === 'connected') {
                 setConnected(true);
                 setReconnecting(false);
-                setTransport('webrtc');
+                setTransport('webrtc_p2p');
               } else if (state === 'failed' || state === 'error') {
-                // Fallback to WebSocket
+                // Fallback to local WebSocket if on local origin
                 fallbackToWebSocket();
+              } else if (state === 'disconnected') {
+                setConnected(false);
+                setReconnecting(true);
               }
             }
           });
@@ -269,7 +303,7 @@ export function useTelemetry() {
           wsRef.current.onopen = () => {
             setConnected(true);
             setReconnecting(false);
-            setTransport('websocket');
+            setTransport('websocket_local');
             reconnectAttemptsRef.current = 0;
           };
 
@@ -285,6 +319,7 @@ export function useTelemetry() {
           wsRef.current.onclose = () => {
             setConnected(false);
             setReconnecting(true);
+            setTransport('disconnected');
             
             const baseDelay = 1000;
             const maxDelay = 8000;
@@ -302,9 +337,9 @@ export function useTelemetry() {
             wsRef.current?.close();
           };
         } catch (err) {
-          console.error('WebSocket connection error:', err);
           setConnected(false);
           setReconnecting(true);
+          setTransport('disconnected');
         }
       }
     };
@@ -333,5 +368,15 @@ export function useTelemetry() {
     };
   }, []);
 
-  return { telemetry, analytics, connected, reconnecting, transport };
+  return {
+    telemetry,
+    analytics,
+    connected,
+    reconnecting,
+    transport,
+    latencyMs,
+    isDirectP2P,
+    packetRateHz,
+    cloudTelemetryBytes: 0
+  };
 }
