@@ -3,6 +3,7 @@ import json
 import logging
 import argparse
 import time
+import socket
 from typing import Set, Dict, Any
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -169,6 +170,42 @@ def stop_simulator():
         runtime_state["simulator_task"] = None
         logger.info("Physics simulator stopped")
 
+def get_lan_ip() -> str:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1'
+    finally:
+        s.close()
+    return ip
+
+def print_terminal_banner(lan_ip: str, port: int, udp_port: int):
+    pairing_url = f"https://gridpulse.wranglr.co.za?bridge=http://{lan_ip}:{port}"
+    print("\n" + "=" * 58)
+    print("             GRIDPULSE TELEMETRY BRIDGE v2.0")
+    print("=" * 58)
+    print(f" * UDP Telemetry Ingress : 0.0.0.0:{udp_port}")
+    print(f" * Localhost Gateway     : http://127.0.0.1:{port}")
+    print(f" * LAN Gateway           : http://{lan_ip}:{port}")
+    print("=" * 58)
+    print(" FORZA IN-GAME SETUP (HUD & Gameplay > Telemetry):")
+    print(f"   Data Out            : ON")
+    print(f"   Data Out IP Address : 127.0.0.1 (or {lan_ip})")
+    print(f"   Data Out IP Port    : {udp_port}")
+    print("=" * 58)
+    print(" SCAN WITH PHONE CAMERA TO OPEN DASHBOARD:")
+    try:
+        import qrcode
+        qr = qrcode.QRCode(box_size=1, border=1)
+        qr.add_data(pairing_url)
+        qr.print_ascii(invert=True)
+    except Exception:
+        pass
+    print(f" Direct Link: {pairing_url}")
+    print("=" * 58 + "\n")
+
 # =========================================================================
 # LIFECYCLE HOOKS
 # =========================================================================
@@ -191,6 +228,9 @@ async def startup():
 
     if CONFIG["simulate"]:
         start_simulator()
+
+    lan_ip = get_lan_ip()
+    print_terminal_banner(lan_ip, CONFIG["port"], CONFIG["udp_port"])
 
 @app.on_event("shutdown")
 async def shutdown():

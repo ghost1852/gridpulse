@@ -73,30 +73,37 @@ export interface AnalyticsData {
 }
 
 export function getTelemetryWsUrl(): string {
-  try {
-    const saved = localStorage.getItem('gridpulse_telemetry_host');
-    if (saved && saved.trim()) {
-      let host = saved.trim();
-      if (host.startsWith('ws://') || host.startsWith('wss://')) {
-        return host.endsWith('/ws') ? host : `${host.replace(/\/$/, '')}/ws`;
-      }
-      if (host.startsWith('http://')) {
-        return `ws://${host.slice(7).replace(/\/$/, '')}/ws`;
-      }
-      if (host.startsWith('https://')) {
-        return `wss://${host.slice(8).replace(/\/$/, '')}/ws`;
-      }
-      return `ws://${host.replace(/\/$/, '')}/ws`;
-    }
-  } catch {}
-
   if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.')) {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const port = window.location.port ? `:${window.location.port}` : (import.meta.env.DEV ? ':8000' : '');
-      return `${protocol}//${host}${port}/ws`;
-    }
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const bridgeParam = urlParams.get('bridge');
+      if (bridgeParam && bridgeParam.trim()) {
+        const clean = bridgeParam.trim().replace(/\/$/, '');
+        localStorage.setItem('gridpulse_telemetry_host', clean);
+      }
+
+      const saved = localStorage.getItem('gridpulse_telemetry_host');
+      if (saved && saved.trim()) {
+        let host = saved.trim();
+        if (host.startsWith('ws://') || host.startsWith('wss://')) {
+          return host.endsWith('/ws') ? host : `${host.replace(/\/$/, '')}/ws`;
+        }
+        if (host.startsWith('http://')) {
+          return `ws://${host.slice(7).replace(/\/$/, '')}/ws`;
+        }
+        if (host.startsWith('https://')) {
+          return `wss://${host.slice(8).replace(/\/$/, '')}/ws`;
+        }
+        return `ws://${host.replace(/\/$/, '')}/ws`;
+      }
+
+      const host = window.location.hostname;
+      if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.')) {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = window.location.port ? `:${window.location.port}` : (import.meta.env.DEV ? ':8000' : '');
+        return `${protocol}//${host}${port}/ws`;
+      }
+    } catch {}
   }
 
   // Cloud-hosted fallback (e.g. on gridpulse.wranglr.co.za)
