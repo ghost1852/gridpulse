@@ -268,7 +268,7 @@ export class WebRtcTelemetryClient {
       await this.pc.setRemoteDescription(new RTCSessionDescription(answerSdp));
       this.reportDiagnostics();
 
-      // 5. Start explicit 15s ICE connectivity watchdog
+      // 5. Start explicit 25s ICE connectivity watchdog
       this.iceTimeout = setTimeout(() => {
         if (this.pc && this.pc.iceConnectionState !== 'connected' && this.pc.iceConnectionState !== 'completed') {
           this.warn(`ICE connectivity watchdog timed out (State: ${this.pc.iceConnectionState}).`);
@@ -276,7 +276,7 @@ export class WebRtcTelemetryClient {
             this.onStateChange('error');
           }
         }
-      }, 15000);
+      }, 25000);
 
     } catch (err) {
       this.error('Fatal error during connection setup:', err);
