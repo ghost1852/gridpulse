@@ -11,7 +11,17 @@ import { Gauge, LineChart, Wrench, Activity, Flag, Settings, Radio, BookOpen, Do
 import { cn } from './lib/utils';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'hud' | 'analyze' | 'tuning' | 'stats' | 'drag' | 'guide' | 'settings'>('hud');
+  const [activeTab, setActiveTab] = useState<'hud' | 'analyze' | 'tuning' | 'stats' | 'drag' | 'guide' | 'settings'>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('code')) {
+          return 'hud';
+        }
+      }
+    } catch {}
+    return 'guide';
+  });
   const { connected } = useTelemetry();
 
   const tabs = [
