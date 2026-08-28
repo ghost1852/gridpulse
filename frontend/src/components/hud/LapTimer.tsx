@@ -8,14 +8,14 @@ interface LapTimerProps {
   lastLap: number;
   currentRaceTime?: number;
   lapNumber?: number;
+  sprintStatus?: string;
 }
 
 export function LapTimer({ 
   currentLap, 
   bestLap, 
   lastLap, 
-  currentRaceTime = 0, 
-  lapNumber = 0 
+  lapNumber = 0
 }: LapTimerProps) {
   
   const formatTime = (seconds: number) => {
@@ -27,8 +27,10 @@ export function LapTimer({
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${frac.toString().padStart(3, '0')}`;
   };
 
-  // Determine active display time: prioritizes CurrentLap, falls back to CurrentRaceTime if in timed sprint
-  const activeTime = currentLap > 0 ? currentLap : (currentRaceTime > 0 ? currentRaceTime : 0);
+  // Only display lap time when Forza is sending an active lap (currentLap > 0)
+  // Avoid displaying raw cumulative game session uptime (e.g. 38 minutes)
+  const isLapActive = currentLap > 0;
+  const activeTime = isLapActive ? currentLap : 0;
   const delta = lastLap > 0 && bestLap > 0 ? lastLap - bestLap : 0;
   const isFaster = delta < 0;
 
@@ -37,10 +39,13 @@ export function LapTimer({
       {/* Current Lap / Event Time */}
       <div className="flex-1 p-3 sm:p-4 bg-white/5 border-r border-white/10 flex flex-col items-center justify-center relative">
         <div className="flex items-center gap-1 text-[10px] text-gray-400 uppercase font-bold mb-1 font-mono">
-          <Timer size={12} className="text-cyan-400" />
-          <span>{currentLap > 0 ? `Current Lap ${lapNumber > 0 ? `#${lapNumber}` : ''}` : (currentRaceTime > 0 ? 'Race Time' : 'Current Lap')}</span>
+          <Timer size={12} className={isLapActive ? "text-emerald-400 animate-pulse" : "text-gray-500"} />
+          <span>{isLapActive ? `Lap ${lapNumber > 0 ? `#${lapNumber}` : 'Timing'}` : 'Current Lap'}</span>
         </div>
-        <span className="text-2xl sm:text-3xl font-mono font-black text-white tracking-wider">
+        <span className={cn(
+          "text-2xl sm:text-3xl font-mono font-black tracking-wider",
+          isLapActive ? "text-white" : "text-gray-500"
+        )}>
           {formatTime(activeTime)}
         </span>
       </div>
@@ -51,7 +56,10 @@ export function LapTimer({
           <Flag size={12} />
           <span>Best Lap</span>
         </div>
-        <span className="text-xl sm:text-2xl font-mono font-black text-emerald-400 tracking-wider">
+        <span className={cn(
+          "text-xl sm:text-2xl font-mono font-black tracking-wider",
+          bestLap > 0 ? "text-emerald-400" : "text-gray-500"
+        )}>
           {formatTime(bestLap)}
         </span>
       </div>
@@ -59,7 +67,10 @@ export function LapTimer({
       {/* Last Lap */}
       <div className="flex-1 p-3 sm:p-4 flex flex-col items-center justify-center relative">
         <span className="text-[10px] text-gray-400 uppercase font-bold mb-1 font-mono">Last Lap</span>
-        <span className="text-xl sm:text-2xl font-mono font-bold text-white tracking-wider">
+        <span className={cn(
+          "text-xl sm:text-2xl font-mono font-bold tracking-wider",
+          lastLap > 0 ? "text-white" : "text-gray-500"
+        )}>
           {formatTime(lastLap)}
         </span>
         
