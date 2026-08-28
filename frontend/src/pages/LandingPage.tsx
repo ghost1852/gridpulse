@@ -121,7 +121,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </div>
               <h3 className="font-bold text-white text-base">Run GridPulse Bridge</h3>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Download and unzip <strong>GridPulse-Bridge-Windows.zip</strong> on your gaming PC, then double-click <strong>GridPulse-Bridge.exe</strong>. No Python setup required!
+                Download and unzip <strong>GridPulse-Bridge-Windows.zip</strong> from GitHub Releases on your gaming PC, then double-click <strong>GridPulse-Bridge.exe</strong>. No Python required!
               </p>
               <a
                 href="/downloads/GridPulse-Bridge-Windows.zip"
@@ -129,7 +129,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                 className="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-bold pt-1"
               >
                 <Download size={13} />
-                <span>Download .EXE (68 MB)</span>
+                <span>Download Bridge (.EXE)</span>
               </a>
             </Card>
 

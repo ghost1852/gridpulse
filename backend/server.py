@@ -385,7 +385,14 @@ async def websocket_endpoint(websocket: WebSocket):
 # =========================================================================
 # STATIC FRONTEND MOUNT (For local standalone single-server mode)
 # =========================================================================
-frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+if getattr(sys, 'frozen', False):
+    bundle_dir = Path(getattr(sys, '_MEIPASS', Path(sys.executable).parent))
+    frontend_dist = bundle_dir / "frontend" / "dist"
+    if not frontend_dist.exists():
+        frontend_dist = Path(sys.executable).parent / "frontend" / "dist"
+else:
+    frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+
 if frontend_dist.exists():
     app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")
     @app.get("/{full_path:path}")
@@ -408,8 +415,15 @@ def main():
     CONFIG["simulate"] = args.simulate
     CONFIG["host"] = args.host
 
-    import uvicorn
-    uvicorn.run(app, host=CONFIG["host"], port=CONFIG["port"])
+    try:
+        import uvicorn
+        uvicorn.run(app, host=CONFIG["host"], port=CONFIG["port"])
+    except Exception as e:
+        logger.error(f"Fatal error running GridPulse server: {e}")
+        import traceback
+        traceback.print_exc()
+        if getattr(sys, 'frozen', False):
+            input("\n[ERROR] An error occurred. Press Enter to exit...")
 
 if __name__ == "__main__":
     main()

@@ -1,9 +1,30 @@
 import sqlite3
 import datetime
 import asyncio
+import os
+import sys
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-DB_PATH = "gridpulse.db"
+def get_db_path() -> str:
+    # Use user LocalAppData / GridPulse directory for 100% reliable write access on Windows
+    appdata = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+    if appdata:
+        db_dir = Path(appdata) / "GridPulse"
+        try:
+            db_dir.mkdir(parents=True, exist_ok=True)
+            return str(db_dir / "gridpulse.db")
+        except Exception:
+            pass
+
+    # Fallback to executable / script directory
+    if getattr(sys, 'frozen', False):
+        base_dir = Path(sys.executable).parent
+    else:
+        base_dir = Path(__file__).parent
+    return str(base_dir / "gridpulse.db")
+
+DB_PATH = get_db_path()
 
 def _init_db_sync():
     with sqlite3.connect(DB_PATH) as db:
@@ -45,114 +66,119 @@ def _init_db_sync():
 async def init_db():
     await asyncio.to_thread(_init_db_sync)
 
-def _save_sprint_sync(record: dict):
+def _save_sprint_sync(record: Dict[str, Any]):
     with sqlite3.connect(DB_PATH) as db:
         db.execute('''
             INSERT INTO sprint_records (car_ordinal, car_class, car_pi, category, time_seconds, speed_mph, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (record["car_ordinal"], record["car_class"], record["car_pi"], record["category"], 
-              record["time_seconds"], record["speed_mph"], datetime.datetime.utcnow().isoformat()))
+        ''', (
+            record.get("car_ordinal"),
+            record.get("car_class"),
+            record.get("car_pi"),
+            record.get("category"),
+            record.get("time_seconds"),
+            record.get("speed_mph"),
+            datetime.datetime.utcnow().isoformat()
+        ))
         db.commit()
 
-async def save_sprint(record: dict):
+async def save_sprint(record: Dict[str, Any]):
     await asyncio.to_thread(_save_sprint_sync, record)
 
-def _save_peak_sync(record: dict):
+def _save_peak_sync(record: Dict[str, Any]):
     with sqlite3.connect(DB_PATH) as db:
         db.execute('''
             INSERT INTO peak_records (car_ordinal, car_class, car_pi, award_type, value, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        ''', (record["car_ordinal"], record["car_class"], record["car_pi"], record["award_type"], 
-              record["value"], datetime.datetime.utcnow().isoformat()))
+        ''', (
+            record.get("car_ordinal"),
+            record.get("car_class"),
+            record.get("car_pi"),
+            record.get("award_type"),
+            record.get("value"),
+            datetime.datetime.utcnow().isoformat()
+        ))
         db.commit()
 
-async def save_peak(record: dict):
+async def save_peak(record: Dict[str, Any]):
     await asyncio.to_thread(_save_peak_sync, record)
 
-def _get_leaderboard_sync(category: str, car_class: Optional[int] = None, limit: int = 50) -> List[Dict[str, Any]]:
+def _get_leaderboard_sync(category: str = "0-60", car_class: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
     with sqlite3.connect(DB_PATH) as db:
         db.row_factory = sqlite3.Row
-        query = "SELECT * FROM sprint_records WHERE category = ?"
+        cursor = db.cursor()
+        
+        query = '''
+            SELECT * FROM sprint_records 
+            WHERE category = ?
+        '''
         params = [category]
+        
         if car_class is not None:
-            query += " AND car_class = ?"
+            query += ' AND car_class = ?'
             params.append(car_class)
-        query += " ORDER BY time_seconds ASC LIMIT ?"
+            
+        query += ' ORDER BY time_seconds ASC LIMIT ?'
         params.append(limit)
         
-        cursor = db.execute(query, params)
+        cursor.execute(query, params)
         rows = cursor.fetchall()
-        return [dict(r) for r in rows]
+        return [dict(row) for row in rows]
 
-async def get_leaderboard(category: str, car_class: Optional[int] = None, limit: int = 50) -> List[Dict[str, Any]]:
+async def get_leaderboard(category: str = "0-60", car_class: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
     return await asyncio.to_thread(_get_leaderboard_sync, category, car_class, limit)
 
-def _get_recent_sprints_sync(limit: int = 40) -> List[Dict[str, Any]]:
+def _get_recent_sprints_sync(limit: int = 30) -> List[Dict[str, Any]]:
     with sqlite3.connect(DB_PATH) as db:
         db.row_factory = sqlite3.Row
-        cursor = db.execute('''
-            SELECT id, car_ordinal, car_class, car_pi, category, time_seconds, speed_mph, created_at
-            FROM sprint_records
+        cursor = db.cursor()
+        cursor.execute('''
+            SELECT * FROM sprint_records
             ORDER BY id DESC
             LIMIT ?
         ''', (limit,))
-        return [dict(r) for r in cursor.fetchall()]
+        return [dict(row) for row in cursor.fetchall()]
 
-async def get_recent_sprints(limit: int = 40) -> List[Dict[str, Any]]:
+async def get_recent_sprints(limit: int = 30) -> List[Dict[str, Any]]:
     return await asyncio.to_thread(_get_recent_sprints_sync, limit)
 
-def _get_fastest_cars_sync() -> List[Dict[str, Any]]:
+def _get_fastest_cars_per_ordinal_sync() -> List[Dict[str, Any]]:
     with sqlite3.connect(DB_PATH) as db:
         db.row_factory = sqlite3.Row
-        cursor = db.execute('''
-            SELECT 
-                car_ordinal,
-                car_class,
-                car_pi,
-                MIN(CASE WHEN category = '0-60' AND time_seconds > 0.05 THEN time_seconds END) as best_0_60,
-                MIN(CASE WHEN category = '0-100' AND time_seconds > 0.05 THEN time_seconds END) as best_0_100,
-                MIN(CASE WHEN category = 'quarter_mile' AND time_seconds > 0.05 THEN time_seconds END) as best_quarter_mile,
-                MAX(CASE WHEN category = 'quarter_mile' THEN speed_mph END) as best_quarter_trap,
-                MIN(CASE WHEN category = 'half_mile' AND time_seconds > 0.05 THEN time_seconds END) as best_half_mile,
-                MAX(speed_mph) as top_speed,
-                COUNT(*) as total_runs,
-                MAX(created_at) as last_driven
+        cursor = db.cursor()
+        cursor.execute('''
+            SELECT car_ordinal, car_class, car_pi, MIN(time_seconds) as best_0_60, MAX(speed_mph) as top_speed, COUNT(*) as total_runs
             FROM sprint_records
-            WHERE car_ordinal > 0
+            WHERE category = '0-60' AND car_ordinal IS NOT NULL AND car_ordinal > 0
             GROUP BY car_ordinal
-            ORDER BY 
-                CASE WHEN MIN(CASE WHEN category = 'quarter_mile' AND time_seconds > 0.05 THEN time_seconds END) IS NOT NULL THEN 0 ELSE 1 END,
-                best_quarter_mile ASC,
-                best_0_60 ASC
+            ORDER BY best_0_60 ASC
         ''')
-        return [dict(r) for r in cursor.fetchall()]
+        return [dict(row) for row in cursor.fetchall()]
 
-async def get_fastest_cars() -> List[Dict[str, Any]]:
-    return await asyncio.to_thread(_get_fastest_cars_sync)
+async def get_fastest_cars_per_ordinal() -> List[Dict[str, Any]]:
+    return await asyncio.to_thread(_get_fastest_cars_per_ordinal_sync)
 
-def _clear_sprints_sync():
+def _get_daily_awards_sync() -> List[Dict[str, Any]]:
+    with sqlite3.connect(DB_PATH) as db:
+        db.row_factory = sqlite3.Row
+        cursor = db.cursor()
+        today = datetime.date.today().isoformat()
+        cursor.execute('''
+            SELECT award_type, MAX(value) as max_value, car_ordinal, car_class, car_pi
+            FROM peak_records 
+            WHERE created_at LIKE ?
+            GROUP BY award_type
+        ''', (f"{today}%",))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+async def get_daily_awards() -> List[Dict[str, Any]]:
+    return await asyncio.to_thread(_get_daily_awards_sync)
+
+def _clear_all_sprints_sync():
     with sqlite3.connect(DB_PATH) as db:
         db.execute('DELETE FROM sprint_records')
         db.commit()
 
-async def clear_sprints():
-    await asyncio.to_thread(_clear_sprints_sync)
-
-def _get_daily_awards_sync(date_str: Optional[str] = None) -> List[Dict[str, Any]]:
-    if not date_str:
-        date_str = datetime.datetime.utcnow().date().isoformat()
-        
-    with sqlite3.connect(DB_PATH) as db:
-        db.row_factory = sqlite3.Row
-        query = '''
-            SELECT award_type, MAX(value) as max_val, car_ordinal, car_class, car_pi, created_at
-            FROM peak_records 
-            WHERE date(created_at) = date(?)
-            GROUP BY award_type
-        '''
-        cursor = db.execute(query, (date_str,))
-        rows = cursor.fetchall()
-        return [dict(r) for r in rows]
-
-async def get_daily_awards(date_str: Optional[str] = None) -> List[Dict[str, Any]]:
-    return await asyncio.to_thread(_get_daily_awards_sync, date_str)
+async def clear_all_sprints():
+    await asyncio.to_thread(_clear_all_sprints_sync)
