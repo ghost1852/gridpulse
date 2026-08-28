@@ -2,6 +2,7 @@ import { Card } from '../ui/Card';
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
 import { Activity } from 'lucide-react';
+import { useUnits } from '../../context/UnitContext';
 
 interface TireTempsProps {
   fl: number;
@@ -23,15 +24,16 @@ export function TireTemps({
   slipFl = 0, slipFr = 0, slipRl = 0, slipRr = 0,
   suspFl = 0.5, suspFr = 0.5, suspRl = 0.5, suspRr = 0.5
 }: TireTempsProps) {
+  const { convertTemp, units } = useUnits();
   
-  const getTempColor = (temp: number) => {
-    if (temp < 150) return '#38bdf8'; // Cold - Sky Blue
-    if (temp < 205) return '#10b981'; // Optimal Grip - Emerald
-    if (temp < 240) return '#f59e0b'; // Warm - Amber
+  const getTempColor = (tempF: number) => {
+    if (tempF < 150) return '#38bdf8'; // Cold - Sky Blue
+    if (tempF < 205) return '#10b981'; // Optimal Grip - Emerald
+    if (tempF < 240) return '#f59e0b'; // Warm - Amber
     return '#ef4444'; // Hot / Overheating - Red
   };
 
-  const isDanger = (temp: number) => temp >= 235;
+  const isDanger = (tempF: number) => tempF >= 235;
 
   const TirePod = ({ 
     temp, 
@@ -50,6 +52,7 @@ export function TireTemps({
     const danger = isDanger(temp);
     const isSliding = slip > 0.8;
     const suspCompressionPct = Math.min(100, Math.max(0, (1.0 - susp) * 100));
+    const converted = convertTemp(temp);
 
     return (
       <div className={cn("flex items-center gap-1.5", isLeft ? "flex-row" : "flex-row-reverse")}>
@@ -94,9 +97,11 @@ export function TireTemps({
 
             {/* Tire Temperature Value */}
             <span className="font-mono text-xs sm:text-sm font-black text-white z-10 tracking-tight">
-              {Math.round(temp)}°
+              {converted.value}°
             </span>
-            <span className="text-[7px] sm:text-[8px] font-mono text-gray-400 font-semibold z-10">FAHR</span>
+            <span className="text-[7px] sm:text-[8px] font-mono text-gray-400 font-semibold z-10 uppercase">
+              {units.temperature === 'c' ? 'CELS' : 'FAHR'}
+            </span>
 
             {/* Bottom Grip / Slip Meter */}
             <div className="absolute bottom-0.5 inset-x-1 h-0.5 bg-white/10 rounded-full overflow-hidden">

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTelemetry } from '../hooks/useTelemetry';
+import { useUnits } from '../context/UnitContext';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { TuningRecommendations } from '../components/hud/TuningRecommendations';
@@ -62,6 +63,7 @@ interface StintRecord {
 
 export function VehicleStatsPage() {
   const { telemetry } = useTelemetry();
+  const { convertTemp } = useUnits();
 
   // Fallback data
   const data = telemetry || {
@@ -473,16 +475,18 @@ Samples Captured: ${stint.samples?.length || 0}`;
               <Zap size={11} className="text-amber-400" />
               <span>POWER</span>
             </div>
-            <span className="text-[8px] font-mono text-gray-500">PK {peakHpRef.current}</span>
+            <span className="text-[8px] font-mono text-gray-500">PK {Math.round(peakHpRef.current)}</span>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl sm:text-3xl font-mono font-black text-white">{data.power_hp}</span>
+            <span className="text-2xl sm:text-3xl font-mono font-black text-white">
+              {Math.max(0, Math.round(data.power_hp))}
+            </span>
             <span className="text-[10px] font-mono text-amber-400 font-bold">HP</span>
           </div>
           <div className="w-full h-1 bg-black/60 rounded-full overflow-hidden border border-white/5">
             <motion.div 
               className="h-full bg-amber-400 rounded-full"
-              style={{ width: `${Math.min(100, (data.power_hp / Math.max(700, peakHpRef.current)) * 100)}%` }}
+              style={{ width: `${Math.min(100, (Math.max(0, data.power_hp) / Math.max(700, peakHpRef.current || 1)) * 100)}%` }}
             />
           </div>
         </Card>
@@ -494,16 +498,18 @@ Samples Captured: ${stint.samples?.length || 0}`;
               <Flame size={11} className="text-orange-400" />
               <span>TORQUE</span>
             </div>
-            <span className="text-[8px] font-mono text-gray-500">PK {peakTorqueRef.current}</span>
+            <span className="text-[8px] font-mono text-gray-500">PK {Math.round(peakTorqueRef.current)}</span>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl sm:text-3xl font-mono font-black text-white">{data.torque_ftlb}</span>
+            <span className="text-2xl sm:text-3xl font-mono font-black text-white">
+              {Math.max(0, Math.round(data.torque_ftlb))}
+            </span>
             <span className="text-[10px] font-mono text-orange-400 font-bold">LB·FT</span>
           </div>
           <div className="w-full h-1 bg-black/60 rounded-full overflow-hidden border border-white/5">
             <motion.div 
               className="h-full bg-orange-400 rounded-full"
-              style={{ width: `${Math.min(100, (data.torque_ftlb / Math.max(650, peakTorqueRef.current)) * 100)}%` }}
+              style={{ width: `${Math.min(100, (Math.max(0, data.torque_ftlb) / Math.max(650, peakTorqueRef.current || 1)) * 100)}%` }}
             />
           </div>
         </Card>
@@ -524,7 +530,7 @@ Samples Captured: ${stint.samples?.length || 0}`;
           <div className="w-full h-1 bg-black/60 rounded-full overflow-hidden border border-white/5">
             <motion.div 
               className="h-full bg-cyan-400 rounded-full"
-              style={{ width: `${Math.min(100, (data.boost_psi / 25) * 100)}%` }}
+              style={{ width: `${Math.min(100, (Math.max(0, data.boost_psi) / 25) * 100)}%` }}
             />
           </div>
         </Card>
@@ -539,13 +545,13 @@ Samples Captured: ${stint.samples?.length || 0}`;
             <span className="text-[8px] font-mono text-emerald-400 font-bold">100%</span>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl sm:text-3xl font-mono font-black text-white">{data.fuel_pct}</span>
+            <span className="text-2xl sm:text-3xl font-mono font-black text-white">{Math.round(data.fuel_pct)}</span>
             <span className="text-[10px] font-mono text-emerald-400 font-bold">%</span>
           </div>
           <div className="w-full h-1 bg-black/60 rounded-full overflow-hidden border border-white/5">
             <motion.div 
               className="h-full bg-emerald-400 rounded-full"
-              style={{ width: `${data.fuel_pct}%` }}
+              style={{ width: `${Math.round(data.fuel_pct)}%` }}
             />
           </div>
         </Card>
@@ -579,11 +585,11 @@ Samples Captured: ${stint.samples?.length || 0}`;
           <div className="grid grid-cols-2 gap-1.5 text-center font-mono text-xs pt-1 border-t border-white/5">
             <div className="bg-black/40 rounded p-1 border border-white/5">
               <span className="text-[8px] text-gray-500 uppercase block font-bold">Pitch</span>
-              <span className="text-xs font-bold text-white">{pitchDeg > 0 ? `+${pitchDeg}` : pitchDeg}°</span>
+              <span className="text-xs font-bold text-white">{pitchDeg > 0 ? `+${pitchDeg.toFixed(1)}` : pitchDeg.toFixed(1)}°</span>
             </div>
             <div className="bg-black/40 rounded p-1 border border-white/5">
               <span className="text-[8px] text-gray-500 uppercase block font-bold">Roll</span>
-              <span className="text-xs font-bold text-white">{rollDeg > 0 ? `+${rollDeg}` : rollDeg}°</span>
+              <span className="text-xs font-bold text-white">{rollDeg > 0 ? `+${rollDeg.toFixed(1)}` : rollDeg.toFixed(1)}°</span>
             </div>
           </div>
         </Card>
@@ -604,7 +610,7 @@ Samples Captured: ${stint.samples?.length || 0}`;
 
           <div className="flex flex-col items-center justify-center py-1 space-y-0.5">
             <span className="text-3xl font-mono font-black text-white">
-              {slipAngleDeg}°
+              {Math.abs(slipAngleDeg).toFixed(1)}°
             </span>
             <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-gray-400">
               {slipAngleDeg > 35 ? 'EXTREME SLIP' : slipAngleDeg > 15 ? 'DEEP SLIP' : 'GRIP LINE'}
@@ -613,7 +619,7 @@ Samples Captured: ${stint.samples?.length || 0}`;
             <div className="w-full max-w-[160px] h-1.5 bg-black/60 rounded-full border border-white/10 overflow-hidden relative mt-1">
               <motion.div 
                 className="h-full bg-gradient-to-r from-pink-500 to-amber-400 rounded-full"
-                style={{ width: `${Math.min(100, (slipAngleDeg / 60) * 100)}%` }}
+                style={{ width: `${Math.min(100, (Math.abs(slipAngleDeg) / 60) * 100)}%` }}
               />
             </div>
           </div>
@@ -621,7 +627,7 @@ Samples Captured: ${stint.samples?.length || 0}`;
           <div className="grid grid-cols-2 gap-1.5 text-center font-mono text-xs pt-1 border-t border-white/5">
             <div className="bg-black/40 rounded p-1 border border-white/5">
               <span className="text-[8px] text-gray-500 uppercase block font-bold">Yaw Rate</span>
-              <span className="text-xs font-bold text-white">{data.yaw_rate_degs}°/s</span>
+              <span className="text-xs font-bold text-white">{Math.abs(data.yaw_rate_degs).toFixed(1)}°/s</span>
             </div>
             <div className="bg-black/40 rounded p-1 border border-white/5">
               <span className="text-[8px] text-gray-500 uppercase block font-bold">Lateral G</span>
@@ -698,7 +704,7 @@ Samples Captured: ${stint.samples?.length || 0}`;
           <div className="bg-black/50 border border-white/10 rounded-lg p-2.5 space-y-1">
             <div className="flex justify-between items-center text-gray-400 font-bold text-[10px]">
               <span>FL</span>
-              <span className="text-white">{Math.round(data.tire_temp_fl)}°F</span>
+              <span className="text-white">{convertTemp(data.tire_temp_fl).value}{convertTemp(data.tire_temp_fl).label}</span>
             </div>
             <div className="flex items-center justify-between text-[9px] text-gray-500">
               <span>Susp</span>
@@ -713,7 +719,7 @@ Samples Captured: ${stint.samples?.length || 0}`;
           <div className="bg-black/50 border border-white/10 rounded-lg p-2.5 space-y-1">
             <div className="flex justify-between items-center text-gray-400 font-bold text-[10px]">
               <span>FR</span>
-              <span className="text-white">{Math.round(data.tire_temp_fr)}°F</span>
+              <span className="text-white">{convertTemp(data.tire_temp_fr).value}{convertTemp(data.tire_temp_fr).label}</span>
             </div>
             <div className="flex items-center justify-between text-[9px] text-gray-500">
               <span>Susp</span>
@@ -728,7 +734,7 @@ Samples Captured: ${stint.samples?.length || 0}`;
           <div className="bg-black/50 border border-white/10 rounded-lg p-2.5 space-y-1">
             <div className="flex justify-between items-center text-gray-400 font-bold text-[10px]">
               <span>RL</span>
-              <span className="text-white">{Math.round(data.tire_temp_rl)}°F</span>
+              <span className="text-white">{convertTemp(data.tire_temp_rl).value}{convertTemp(data.tire_temp_rl).label}</span>
             </div>
             <div className="flex items-center justify-between text-[9px] text-gray-500">
               <span>Susp</span>
@@ -743,7 +749,7 @@ Samples Captured: ${stint.samples?.length || 0}`;
           <div className="bg-black/50 border border-white/10 rounded-lg p-2.5 space-y-1">
             <div className="flex justify-between items-center text-gray-400 font-bold text-[10px]">
               <span>RR</span>
-              <span className="text-white">{Math.round(data.tire_temp_rr)}°F</span>
+              <span className="text-white">{convertTemp(data.tire_temp_rr).value}{convertTemp(data.tire_temp_rr).label}</span>
             </div>
             <div className="flex items-center justify-between text-[9px] text-gray-500">
               <span>Susp</span>
