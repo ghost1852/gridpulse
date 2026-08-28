@@ -5,6 +5,7 @@ import { GForceCircle } from '../components/hud/GForceCircle';
 import { PedalMeters } from '../components/hud/PedalMeters';
 import { TireTemps } from '../components/hud/TireTemps';
 import { LapTimer } from '../components/hud/LapTimer';
+import { TractionDynamics } from '../components/hud/TractionDynamics';
 import { RaceAlertBanner } from '../components/hud/RaceAlertBanner';
 import { Maximize2, Minimize2 } from 'lucide-react';
 import { useState } from 'react';
@@ -43,6 +44,14 @@ export function HudPage() {
     tire_slip_fr: 0,
     tire_slip_rl: 0,
     tire_slip_rr: 0,
+    slip_angle_fl: 0,
+    slip_angle_fr: 0,
+    slip_angle_rl: 0,
+    slip_angle_rr: 0,
+    slip_ratio_fl: 0,
+    slip_ratio_fr: 0,
+    slip_ratio_rl: 0,
+    slip_ratio_rr: 0,
     susp_fl: 0.5,
     susp_fr: 0.5,
     susp_rl: 0.5,
@@ -121,6 +130,30 @@ export function HudPage() {
           slipRl={data.tire_slip_rl} slipRr={data.tire_slip_rr}
           suspFl={data.susp_fl} suspFr={data.susp_fr}
           suspRl={data.susp_rl} suspRr={data.susp_rr}
+        />
+
+        {/* Chassis Balance, Understeer/Oversteer & Traction Utilization */}
+        <TractionDynamics
+          slipAngleFl={data.slip_angle_fl}
+          slipAngleFr={data.slip_angle_fr}
+          slipAngleRl={data.slip_angle_rl}
+          slipAngleRr={data.slip_angle_rr}
+          slipRatioFl={data.slip_ratio_fl}
+          slipRatioFr={data.slip_ratio_fr}
+          slipRatioRl={data.slip_ratio_rl}
+          slipRatioRr={data.slip_ratio_rr}
+          tireTempFl={data.tire_temp_fl}
+          tireTempFr={data.tire_temp_fr}
+          tireTempRl={data.tire_temp_rl}
+          tireTempRr={data.tire_temp_rr}
+          accelX={data.acceleration_x}
+          accelZ={data.acceleration_z}
+          throttle={data.accel}
+          brake={data.brake}
+          suspFl={data.susp_fl}
+          suspFr={data.susp_fr}
+          suspRl={data.susp_rl}
+          suspRr={data.susp_rr}
         />
 
         {/* G-Force Friction Circle Card */}

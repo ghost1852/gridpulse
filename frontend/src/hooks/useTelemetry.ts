@@ -21,6 +21,14 @@ export interface TelemetryData {
   tire_slip_fr: number;
   tire_slip_rl: number;
   tire_slip_rr: number;
+  slip_angle_fl?: number;
+  slip_angle_fr?: number;
+  slip_angle_rl?: number;
+  slip_angle_rr?: number;
+  slip_ratio_fl?: number;
+  slip_ratio_fr?: number;
+  slip_ratio_rl?: number;
+  slip_ratio_rr?: number;
   susp_fl: number;
   susp_fr: number;
   susp_rl: number;
@@ -150,6 +158,14 @@ function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
     tire_slip_fr: typeof raw.TireCombinedSlipFrontRight === 'number' ? raw.TireCombinedSlipFrontRight : (typeof raw.tire_slip_fr === 'number' ? raw.tire_slip_fr : 0),
     tire_slip_rl: typeof raw.TireCombinedSlipRearLeft === 'number' ? raw.TireCombinedSlipRearLeft : (typeof raw.tire_slip_rl === 'number' ? raw.tire_slip_rl : 0),
     tire_slip_rr: typeof raw.TireCombinedSlipRearRight === 'number' ? raw.TireCombinedSlipRearRight : (typeof raw.tire_slip_rr === 'number' ? raw.tire_slip_rr : 0),
+    slip_angle_fl: typeof raw.TireSlipAngleFrontLeft === 'number' ? raw.TireSlipAngleFrontLeft : (typeof raw.slip_angle_fl === 'number' ? raw.slip_angle_fl : 0),
+    slip_angle_fr: typeof raw.TireSlipAngleFrontRight === 'number' ? raw.TireSlipAngleFrontRight : (typeof raw.slip_angle_fr === 'number' ? raw.slip_angle_fr : 0),
+    slip_angle_rl: typeof raw.TireSlipAngleRearLeft === 'number' ? raw.TireSlipAngleRearLeft : (typeof raw.slip_angle_rl === 'number' ? raw.slip_angle_rl : 0),
+    slip_angle_rr: typeof raw.TireSlipAngleRearRight === 'number' ? raw.TireSlipAngleRearRight : (typeof raw.slip_angle_rr === 'number' ? raw.slip_angle_rr : 0),
+    slip_ratio_fl: typeof raw.TireSlipRatioFrontLeft === 'number' ? raw.TireSlipRatioFrontLeft : (typeof raw.slip_ratio_fl === 'number' ? raw.slip_ratio_fl : 0),
+    slip_ratio_fr: typeof raw.TireSlipRatioFrontRight === 'number' ? raw.TireSlipRatioFrontRight : (typeof raw.slip_ratio_fr === 'number' ? raw.slip_ratio_fr : 0),
+    slip_ratio_rl: typeof raw.TireSlipRatioRearLeft === 'number' ? raw.TireSlipRatioRearLeft : (typeof raw.slip_ratio_rl === 'number' ? raw.slip_ratio_rl : 0),
+    slip_ratio_rr: typeof raw.TireSlipRatioRearRight === 'number' ? raw.TireSlipRatioRearRight : (typeof raw.slip_ratio_rr === 'number' ? raw.slip_ratio_rr : 0),
     susp_fl: typeof raw.NormalizedSuspensionTravelFrontLeft === 'number' ? raw.NormalizedSuspensionTravelFrontLeft : (typeof raw.susp_fl === 'number' ? raw.susp_fl : 0.5),
     susp_fr: typeof raw.NormalizedSuspensionTravelFrontRight === 'number' ? raw.NormalizedSuspensionTravelFrontRight : (typeof raw.susp_fr === 'number' ? raw.susp_fr : 0.5),
     susp_rl: typeof raw.NormalizedSuspensionTravelRearLeft === 'number' ? raw.NormalizedSuspensionTravelRearLeft : (typeof raw.susp_rl === 'number' ? raw.susp_rl : 0.5),
