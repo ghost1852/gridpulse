@@ -54,6 +54,12 @@ class WebRtcHost:
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
+        # Wait for ICE gathering to complete so all candidate pairs are embedded in SDP
+        for _ in range(30):
+            if pc.iceGatheringState == "complete":
+                break
+            await asyncio.sleep(0.05)
+
         return {
             "sdp": pc.localDescription.sdp,
             "type": pc.localDescription.type

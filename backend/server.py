@@ -18,6 +18,7 @@ from analytics import TelemetryAnalytics
 import database
 from simulator import TelemetrySimulator
 from webrtc_host import WebRtcHost
+from signaling_client import EphemeralSignalingClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("GridPulse")
@@ -39,6 +40,7 @@ webrtc_engine = WebRtcHost()
 
 # 6-Digit Device Pairing Code
 PAIRING_CODE = f"{random.randint(100, 999)} {random.randint(100, 999)}"
+signaling_client = EphemeralSignalingClient(PAIRING_CODE, webrtc_engine)
 
 # Asynchronous non-blocking Database Queue
 db_queue: asyncio.Queue = asyncio.Queue()
@@ -192,11 +194,13 @@ def get_lan_ip() -> str:
 
 def print_terminal_banner(lan_ip: str, port: int, udp_port: int):
     clean_code = PAIRING_CODE.replace(" ", "")
-    direct_url = f"http://{lan_ip}:{port}"
+    pwa_url = f"https://gridpulse.wranglr.co.za?code={clean_code}"
+    lan_url = f"http://{lan_ip}:{port}"
     print("\n" + "=" * 60)
     print("             GRIDPULSE TELEMETRY BRIDGE v2.1")
     print("=" * 60)
-    print(f" * LAN Dashboard URL    : {direct_url}")
+    print(f" * Cloud Pairing URL    : {pwa_url}")
+    print(f" * LAN Dashboard URL    : {lan_url}")
     print(f" * UDP Telemetry Ingress : 0.0.0.0:{udp_port}")
     print(f" * WebRTC / WebSocket   : ACTIVE (Port {port})")
     print(f" * Session Pairing Code : {PAIRING_CODE}")
@@ -210,11 +214,12 @@ def print_terminal_banner(lan_ip: str, port: int, udp_port: int):
     try:
         import qrcode
         qr = qrcode.QRCode(box_size=1, border=1)
-        qr.add_data(direct_url)
+        qr.add_data(pwa_url)
         qr.print_ascii(invert=True)
     except Exception:
         pass
-    print(f" Open on Phone: {direct_url}")
+    print(f" Open on Phone (Cloud PWA) : {pwa_url}")
+    print(f" Open on Phone (Local LAN) : {lan_url}")
     print("=" * 60 + "\n")
 
 # =========================================================================
@@ -240,11 +245,15 @@ async def startup():
     if CONFIG["simulate"]:
         start_simulator()
 
+    # Start ephemeral WebRTC signaling broker listener
+    await signaling_client.start()
+
     lan_ip = get_lan_ip()
     print_terminal_banner(lan_ip, CONFIG["port"], CONFIG["udp_port"])
 
 @app.on_event("shutdown")
 async def shutdown():
+    signaling_client.close()
     stop_simulator()
     if runtime_state["udp_transport"]:
         runtime_state["udp_transport"].close()
@@ -416,17 +425,23 @@ if frontend_dist.exists() and (frontend_dist / "index.html").exists():
 
 
 def main():
+    global PAIRING_CODE, signaling_client
     parser = argparse.ArgumentParser(description="GridPulse Forza Telemetry Engine")
     parser.add_argument("--port", type=int, default=8000, help="Web/WS port (default: 8000)")
     parser.add_argument("--udp-port", type=int, default=20066, help="Forza UDP port (default: 20066)")
     parser.add_argument("--simulate", action="store_true", default=False, help="Run in simulator mode")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host address to bind (default: 0.0.0.0)")
+    parser.add_argument("--code", type=str, default=None, help="Custom pairing code for testing")
 
     args = parser.parse_args()
     CONFIG["port"] = args.port
     CONFIG["udp_port"] = args.udp_port
     CONFIG["simulate"] = args.simulate
     CONFIG["host"] = args.host
+
+    if args.code:
+        PAIRING_CODE = args.code.strip()
+        signaling_client = EphemeralSignalingClient(PAIRING_CODE, webrtc_engine)
 
     try:
         import uvicorn
