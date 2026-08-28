@@ -81,11 +81,16 @@ export function App() {
         </div>
       </aside>
 
-      {/* Main Content Area (Always scrollable in all orientations) */}
-      <main className="flex-1 relative overflow-y-auto min-h-0 bg-gradient-to-br from-[#0a0a0f] to-[#111118]">
-        {/* Floating Landscape Mode Tab Switcher Bar (Top Right) */}
-        <div className="hidden landscape:flex lg:landscape:hidden sticky top-2 z-50 justify-end px-3 pointer-events-none mb-1">
-          <div className="bg-black/85 backdrop-blur-md border border-white/15 rounded-xl p-1 flex gap-1 shadow-2xl pointer-events-auto">
+      {/* Main Content Area */}
+      <main className="flex-1 flex flex-col relative overflow-y-auto min-h-0 bg-gradient-to-br from-[#0a0a0f] to-[#111118]">
+        {/* Clean Non-Overlapping Landscape Top Bar */}
+        <header className="hidden landscape:flex lg:landscape:hidden items-center justify-between px-3 py-1 bg-[#0a0a10]/95 border-b border-white/10 shrink-0 z-40">
+          <div className="flex items-center gap-2">
+            <div className={cn("w-2 h-2 rounded-full", connected ? "bg-emerald-400 shadow-[0_0_8px_#00ff88]" : "bg-amber-400")} />
+            <span className="font-mono font-black text-xs tracking-wider text-white">GRIDPULSE</span>
+            <span className="text-[9px] font-mono text-emerald-400 font-bold ml-1">{connected ? "60Hz P2P" : "STANDBY"}</span>
+          </div>
+          <div className="flex items-center gap-1">
             {tabs.map(tab => (
               <button
                 key={tab.id}
@@ -93,17 +98,17 @@ export function App() {
                 onPointerDown={() => setActiveTab(tab.id)}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "px-2.5 py-1 rounded-lg text-[10px] font-mono transition-colors cursor-pointer flex items-center gap-1 touch-manipulation",
+                  "px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold transition-all cursor-pointer",
                   activeTab === tab.id
-                    ? "bg-emerald-500 text-black font-bold shadow-[0_0_10px_#00ff88]"
-                    : "text-gray-400 hover:text-white active:bg-white/10"
+                    ? "bg-emerald-500 text-black shadow-[0_0_10px_#00ff88]"
+                    : "text-gray-400 hover:text-white bg-white/5"
                 )}
               >
                 {tab.label}
               </button>
             ))}
           </div>
-        </div>
+        </header>
 
         {activeTab === 'hud' && <HudPage />}
         {activeTab === 'tuning' && <TuningBenchPage />}
