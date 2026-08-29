@@ -10,7 +10,8 @@ import {
   downloadStintJsonFile, 
   importStintFromJson, 
   globalStintRecorder, 
-  type Stint 
+  type Stint,
+  type SessionMode
 } from '../lib/stints';
 import { 
   ComposedChart,
@@ -36,7 +37,8 @@ import {
   Gauge, 
   Compass, 
   Flame, 
-  AlertTriangle
+  AlertTriangle,
+  ShieldAlert
 } from 'lucide-react';
 
 export function RaceAnalyzePage() {
@@ -47,6 +49,7 @@ export function RaceAnalyzePage() {
   const [selectedStintId, setSelectedStintId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
+  const [preferredMode, setPreferredMode] = useState<SessionMode | 'AUTO'>('AUTO');
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,7 +112,8 @@ export function RaceAnalyzePage() {
           pi: car.pi,
           drivetrain: car.drivetrain
         },
-        telemetry.distance_traveled || 0
+        telemetry.distance_traveled || 0,
+        preferredMode === 'AUTO' ? null : preferredMode
       );
       setIsRecording(true);
     }
@@ -157,34 +161,22 @@ export function RaceAnalyzePage() {
     return raw.filter((_, i) => i % step === 0);
   }, [activeStint]);
 
-  // Detect if this was a drift session
-  const driftMetrics = useMemo(() => {
-    if (!activeStint || !activeStint.samples || activeStint.samples.length === 0) return null;
-    const maxSlip = Math.max(...activeStint.samples.map(s => Math.abs(s.slipAngleDelta || 0)));
-    const wheelspinEvents = activeStint.events.filter(e => e.type === 'WHEELSPIN').length;
-    const isDrift = maxSlip > 0.6 || wheelspinEvents >= 4 || activeStint.peakLatG > 1.5;
-    return {
-      isDrift,
-      maxSlipRad: maxSlip,
-      maxSlipDeg: Math.round(maxSlip * (180 / Math.PI)),
-      wheelspinEvents
-    };
-  }, [activeStint]);
-
   const copyAiPrompt = () => {
     if (!activeStint) return;
     const prompt = `### GridPulse Telemetry Stint Analysis Request
 **Vehicle**: ${activeStint.carName} (${activeStint.carClass} ${activeStint.carPi} - ${activeStint.drivetrain})
+**Session Mode**: ${activeStint.sessionMode || 'FREE_ROAM'}
 **Stint Duration**: ${activeStint.totalDurationSeconds}s | **Distance**: ${activeStint.totalDistanceMiles} miles | **Laps**: ${activeStint.totalLaps}
 **Best Lap**: ${activeStint.bestLapTime > 0 ? `${activeStint.bestLapTime.toFixed(3)}s` : 'N/A'}
 **Top Speed**: ${activeStint.topSpeedMph} MPH | **Peak Lateral G**: ${activeStint.peakLatG} G | **Peak Tire Temp**: ${activeStint.peakTireTemp}°F
-${driftMetrics?.isDrift ? `**Stint Type**: 💨 Drift Stint (Max Slip Angle: ${driftMetrics.maxSlipDeg}° / ${driftMetrics.maxSlipRad.toFixed(2)} rad, Wheelspin Events: ${driftMetrics.wheelspinEvents})` : '**Stint Type**: 🏁 Circuit / Grip Race'}
+${activeStint.driftSummary ? `**Drift Profile**: Max Angle: ${activeStint.driftSummary.maxAngleDeg}° (${activeStint.driftSummary.maxAngleRad} rad) | Slide Time: ${activeStint.driftSummary.timeInSlideSec}s (${activeStint.driftSummary.slidePct}%) | Transitions: ${activeStint.driftSummary.transitionCount} | Rear Temp Rise: ${activeStint.driftSummary.rearTempRiseRate}°F/s` : ''}
+${activeStint.impacts && activeStint.impacts.length > 0 ? `**Wall / Barrier Impacts**: ${activeStint.impacts.length} detected (Peak Impact: ${Math.max(...activeStint.impacts.map(i => i.impactG))}G)` : '**Impacts**: 0 wall strikes'}
 
 **Observed Driving Events**:
 ${activeStint.events.length > 0 ? activeStint.events.map(ev => `- [Lap ${ev.lapNumber} @ ${ev.timestamp}s] ${ev.type}: ${ev.description} (Severity: ${Math.round(ev.severity * 100)}%)`).join('\n') : '- Zero critical instability events detected.'}
 
 **Request**:
-Please act as an expert race engineer and driver coach. Analyze this stint summary, identify driving technique flaws or setup bottlenecks, and provide 3 concrete actionable improvements.`;
+Please act as an expert race engineer and driver coach. Analyze this ${activeStint.sessionMode.toLowerCase()} stint summary, identify driving technique flaws or setup bottlenecks, and provide 3 concrete actionable improvements.`;
 
     navigator.clipboard.writeText(prompt);
     setCopiedPrompt(true);
@@ -210,16 +202,35 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
               RACE ANALYZE &amp; TELEMETRY LAB
             </h1>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">
-              INDEXEDDB LOCAL-FIRST
+              SESSION INTELLIGENCE
             </span>
           </div>
           <p className="text-xs font-mono text-gray-400 mt-1">
-            Analyze recorded driving stints, multi-lap overlays, braking points, tire degradation &amp; export AI-ready datasets.
+            Analyze recorded driving stints, multi-lap overlays, wall impacts, drift angles, and export AI-ready datasets.
           </p>
         </div>
 
-        {/* Action Buttons: Import & Live Recorder */}
-        <div className="flex items-center gap-2">
+        {/* Action Controls: Mode Selector, Import & Recorder */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Mode Override Dropdown */}
+          <div className="flex items-center gap-1.5 bg-black/60 px-2.5 py-1.5 rounded-xl border border-white/10 text-xs font-mono">
+            <span className="text-gray-400 text-[10px] font-bold uppercase">MODE:</span>
+            <select
+              value={preferredMode}
+              onChange={(e) => setPreferredMode(e.target.value as any)}
+              disabled={isRecording}
+              className="bg-transparent text-white font-bold outline-none cursor-pointer"
+            >
+              <option value="AUTO" className="bg-[#111118]">⚡ Auto-Detect</option>
+              <option value="DRIFT" className="bg-[#111118]">💨 Drift</option>
+              <option value="TIME_ATTACK" className="bg-[#111118]">⏱ Time Attack</option>
+              <option value="CIRCUIT" className="bg-[#111118]">🏁 Circuit</option>
+              <option value="SPRINT" className="bg-[#111118]">🚀 Sprint / Drag</option>
+              <option value="OFFROAD" className="bg-[#111118]">🏔 Off-Road</option>
+              <option value="FREE_ROAM" className="bg-[#111118]">🚗 Free Roam</option>
+            </select>
+          </div>
+
           <input
             type="file"
             ref={fileInputRef}
@@ -232,7 +243,7 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-xs font-mono font-bold transition-all cursor-pointer"
           >
             <Upload size={14} />
-            <span>Import JSON</span>
+            <span>Import</span>
           </button>
 
           <button
@@ -251,7 +262,7 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
             ) : (
               <>
                 <Play size={14} className="fill-current" />
-                <span>RECORD LIVE STINT</span>
+                <span>RECORD STINT</span>
               </>
             )}
           </button>
@@ -267,16 +278,27 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
               <div
                 key={stint.id}
                 onClick={() => setSelectedStintId(stint.id)}
-                className={`p-2.5 rounded-xl border transition-all cursor-pointer shrink-0 min-w-[200px] flex flex-col justify-between ${
+                className={`p-2.5 rounded-xl border transition-all cursor-pointer shrink-0 min-w-[210px] flex flex-col justify-between ${
                   isSelected
                     ? 'bg-cyan-950/40 border-cyan-400 shadow-md shadow-cyan-500/10'
                     : 'bg-[#0e0e16] border-white/10 hover:border-white/20'
                 }`}
               >
                 <div className="flex items-center justify-between gap-1">
-                  <span className="text-[10px] font-mono font-bold text-gray-400 truncate max-w-[130px]">
-                    {stint.carName}
-                  </span>
+                  <div className="flex items-center gap-1.5 truncate">
+                    <span className="text-[10px] font-mono font-bold text-gray-300 truncate max-w-[110px]">
+                      {stint.carName}
+                    </span>
+                    <span className={`text-[8px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                      stint.sessionMode === 'DRIFT' ? 'bg-amber-500/20 text-amber-300' :
+                      stint.sessionMode === 'CIRCUIT' ? 'bg-purple-500/20 text-purple-300' :
+                      stint.sessionMode === 'TIME_ATTACK' ? 'bg-emerald-500/20 text-emerald-300' :
+                      stint.sessionMode === 'OFFROAD' ? 'bg-orange-500/20 text-orange-300' :
+                      'bg-cyan-500/20 text-cyan-300'
+                    }`}>
+                      {stint.sessionMode || 'FREE'}
+                    </span>
+                  </div>
                   <button
                     onClick={(e) => handleDeleteStint(stint.id, e)}
                     className="text-gray-500 hover:text-red-400 p-0.5 cursor-pointer"
@@ -297,6 +319,9 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
                 <div className="flex items-center justify-between text-[9px] font-mono text-gray-400 pt-1 border-t border-white/5">
                   <span>{stint.topSpeedMph} MPH</span>
                   <span>{stint.peakLatG}G</span>
+                  {stint.impacts && stint.impacts.length > 0 && (
+                    <span className="text-red-400 font-bold">{stint.impacts.length} Hit{stint.impacts.length > 1 ? 's' : ''}</span>
+                  )}
                 </div>
               </div>
             );
@@ -307,7 +332,7 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
           <Activity size={28} className="mx-auto text-gray-600" />
           <h3 className="text-sm font-mono font-bold text-gray-300">No Stints Recorded Yet</h3>
           <p className="text-xs font-mono text-gray-500 max-w-md mx-auto">
-            Click <strong className="text-emerald-400">RECORD LIVE STINT</strong> while driving in Forza, or import an existing stint JSON file.
+            Click <strong className="text-emerald-400">RECORD STINT</strong> while driving in Forza, or import an existing stint JSON file.
           </p>
         </Card>
       )}
@@ -318,7 +343,7 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
           {/* Stint Metadata & KPI Tiles */}
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
             <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
-              <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">VEHICLE</span>
+              <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">VEHICLE &amp; MODE</span>
               <div className="text-xs font-mono font-bold text-white truncate mt-1">
                 {activeStint.carName}
               </div>
@@ -326,20 +351,24 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
                 <Badge carClass={activeStint.carClass} className="text-[9px] self-start">
                   {activeStint.carClass} {activeStint.carPi}
                 </Badge>
-                {driftMetrics?.isDrift && (
-                  <span className="text-[8px] font-mono font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                    DRIFT
-                  </span>
-                )}
+                <span className="text-[8px] font-mono font-black px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                  {activeStint.sessionMode || 'FREE_ROAM'}
+                </span>
               </div>
             </Card>
 
             <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
-              <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">BEST LAP</span>
+              <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">
+                {activeStint.sessionMode === 'DRIFT' ? 'MAX DRIFT ANGLE' : 'BEST LAP'}
+              </span>
               <div className="text-sm sm:text-base font-mono font-black text-emerald-400 mt-1">
-                {formatLapTime(activeStint.bestLapTime)}
+                {activeStint.sessionMode === 'DRIFT' 
+                  ? `${activeStint.driftSummary?.maxAngleDeg || Math.round(Math.max(...activeStint.samples.map(s => Math.abs(s.slipAngleDelta))) * (180/Math.PI))}°` 
+                  : formatLapTime(activeStint.bestLapTime)}
               </div>
-              <span className="text-[9px] font-mono text-gray-500">{activeStint.totalLaps} Laps total</span>
+              <span className="text-[9px] font-mono text-gray-500">
+                {activeStint.sessionMode === 'DRIFT' ? `${activeStint.driftSummary?.timeInSlideSec || 0}s in slide` : `${activeStint.totalLaps} Laps total`}
+              </span>
             </Card>
 
             <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
@@ -363,7 +392,9 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
               <div className="text-sm sm:text-base font-mono font-black text-amber-400 mt-1">
                 {convertTemp(activeStint.peakTireTemp).value}{convertTemp(activeStint.peakTireTemp).label}
               </div>
-              <span className="text-[9px] font-mono text-gray-500">Peak Thermal Load</span>
+              <span className="text-[9px] font-mono text-gray-500">
+                {activeStint.driftSummary?.rearTempRiseRate ? `+${activeStint.driftSummary.rearTempRiseRate}°F/s build` : 'Peak Thermal Load'}
+              </span>
             </Card>
 
             {/* AI & JSON Export Actions */}
@@ -385,6 +416,42 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
               </button>
             </Card>
           </div>
+
+          {/* Wall / Barrier Impacts Card (if any impacts detected) */}
+          {activeStint.impacts && activeStint.impacts.length > 0 && (
+            <Card className="p-4 bg-red-950/20 border-red-500/30 space-y-2">
+              <div className="flex items-center justify-between text-red-400">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert size={16} />
+                  <h3 className="text-xs font-mono font-black tracking-wider uppercase">
+                    Wall &amp; Barrier Collisions Detected ({activeStint.impacts.length})
+                  </h3>
+                </div>
+                <span className="text-[10px] font-mono text-red-300 font-bold">
+                  Peak Impact: {Math.max(...activeStint.impacts.map(i => i.impactG))}G
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+                {activeStint.impacts.map((imp, idx) => (
+                  <div key={idx} className="bg-black/60 border border-red-500/20 rounded-lg p-2.5 text-xs font-mono space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                        imp.severity === 'SEVERE' ? 'bg-red-500 text-white' :
+                        imp.severity === 'MODERATE' ? 'bg-amber-500 text-black' : 'bg-yellow-500/20 text-yellow-300'
+                      }`}>
+                        {imp.severity} IMPACT
+                      </span>
+                      <span className="text-gray-400 text-[10px]">@{imp.timestamp}s</span>
+                    </div>
+                    <div className="text-white font-bold text-[11px]">
+                      {imp.speedAtImpactMph} MPH ➔ -{imp.speedLostMph} MPH ({imp.impactG}G)
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Chart 1: Speed Trace & Pedal Input Overlay (Throttle / Brake) */}
           <Card className="p-4 bg-[#0e0e16] border-white/10 space-y-3">
@@ -461,11 +528,13 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
                 <div className="flex items-center gap-2">
                   <Compass size={16} className="text-emerald-400" />
                   <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-                    {driftMetrics?.isDrift ? 'Drift Slip Angle & Counter-Steer' : 'Chassis Balance (Under/Oversteer)'}
+                    {activeStint.sessionMode === 'DRIFT' ? 'Drift Slip Angle & Counter-Steer' : 'Chassis Balance (Under/Oversteer)'}
                   </h3>
                 </div>
                 <span className="text-[9px] font-mono text-gray-500 font-bold">
-                  {driftMetrics?.isDrift ? `Max Drift: ${driftMetrics.maxSlipDeg}°` : '< -0.06 Under | > 0.08 Over'}
+                  {activeStint.sessionMode === 'DRIFT' 
+                    ? `Max Drift: ${activeStint.driftSummary?.maxAngleDeg || 0}°` 
+                    : '< -0.06 Under | > 0.08 Over'}
                 </span>
               </div>
 

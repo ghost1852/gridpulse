@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gridpulse-v3';
+const CACHE_NAME = 'gridpulse-v4';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

@@ -168,19 +168,28 @@ function getTelemetryWsUrl(): string {
 
 function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
   const speed = typeof raw.Speed === 'number' ? raw.Speed : (typeof raw.speed === 'number' ? raw.speed : 0);
-  const powerW = typeof raw.Power === 'number' ? raw.Power : 0;
-  const torqueNm = typeof raw.Torque === 'number' ? raw.Torque : 0;
-  const boost = typeof raw.Boost === 'number' ? raw.Boost : 0;
+  const powerW = typeof raw.Power === 'number' ? raw.Power : (typeof raw.power === 'number' ? raw.power : 0);
+  const torqueNm = typeof raw.Torque === 'number' ? raw.Torque : (typeof raw.torque === 'number' ? raw.torque : 0);
+  const boost = typeof raw.Boost === 'number' ? raw.Boost : (typeof raw.boost === 'number' ? raw.boost : 0);
 
   const speedMph = typeof raw.speed_mph === 'number' ? raw.speed_mph : speed * 2.23694;
   const speedKph = typeof raw.speed_kph === 'number' ? raw.speed_kph : speed * 3.6;
 
   const velX = typeof raw.VelocityX === 'number' ? raw.VelocityX : (typeof raw.velocity_x === 'number' ? raw.velocity_x : 0);
   const velZ = typeof raw.VelocityZ === 'number' ? raw.VelocityZ : (typeof raw.velocity_z === 'number' ? raw.velocity_z : 0);
-  const driftRad = Math.atan2(velX, velZ);
-  const driftDeg = driftRad * (180.0 / Math.PI);
+  
+  // Drift angle only has physical meaning when vehicle is moving
+  const isMoving = speedMph >= 1.5;
+  const driftRad = isMoving ? Math.atan2(velX, velZ) : 0;
+  const driftDeg = isMoving ? driftRad * (180.0 / Math.PI) : 0;
   const angVelY = typeof raw.AngularVelocityY === 'number' ? raw.AngularVelocityY : (typeof raw.angular_velocity_y === 'number' ? raw.angular_velocity_y : 0);
-  const yawRateDeg = angVelY * (180.0 / Math.PI);
+  const yawRateDeg = isMoving && Math.abs(angVelY) > 0.001 ? angVelY * (180.0 / Math.PI) : 0;
+
+  // Clean micro floating-point power & torque noise
+  const calculatedHp = typeof raw.power_hp === 'number' ? raw.power_hp : powerW * 0.00134102;
+  const calculatedTq = typeof raw.torque_ftlb === 'number' ? raw.torque_ftlb : torqueNm * 0.737562;
+  const cleanHp = Math.abs(calculatedHp) < 0.2 ? 0 : calculatedHp;
+  const cleanTq = Math.abs(calculatedTq) < 0.2 ? 0 : calculatedTq;
 
   return {
     speed_mph: speedMph,
@@ -213,8 +222,8 @@ function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
     susp_fr: typeof raw.NormalizedSuspensionTravelFrontRight === 'number' ? raw.NormalizedSuspensionTravelFrontRight : (typeof raw.susp_fr === 'number' ? raw.susp_fr : 0.5),
     susp_rl: typeof raw.NormalizedSuspensionTravelRearLeft === 'number' ? raw.NormalizedSuspensionTravelRearLeft : (typeof raw.susp_rl === 'number' ? raw.susp_rl : 0.5),
     susp_rr: typeof raw.NormalizedSuspensionTravelRearRight === 'number' ? raw.NormalizedSuspensionTravelRearRight : (typeof raw.susp_rr === 'number' ? raw.susp_rr : 0.5),
-    power_hp: typeof raw.power_hp === 'number' ? raw.power_hp : powerW * 0.00134102,
-    torque_ftlb: typeof raw.torque_ftlb === 'number' ? raw.torque_ftlb : torqueNm * 0.737562,
+    power_hp: cleanHp,
+    torque_ftlb: cleanTq,
     boost_psi: typeof raw.boost_psi === 'number' ? raw.boost_psi : boost * 0.145038,
     fuel_pct: typeof raw.Fuel === 'number' ? raw.Fuel * 100 : (typeof raw.fuel_pct === 'number' ? raw.fuel_pct : 100),
     acceleration_x: typeof raw.AccelerationX === 'number' ? raw.AccelerationX : (typeof raw.acceleration_x === 'number' ? raw.acceleration_x : 0),
@@ -226,8 +235,8 @@ function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
     yaw: typeof raw.Yaw === 'number' ? raw.Yaw : (typeof raw.yaw === 'number' ? raw.yaw : 0),
     pitch: typeof raw.Pitch === 'number' ? raw.Pitch : (typeof raw.pitch === 'number' ? raw.pitch : 0),
     roll: typeof raw.Roll === 'number' ? raw.Roll : (typeof raw.roll === 'number' ? raw.roll : 0),
-    drift_angle: typeof raw.drift_angle === 'number' ? raw.drift_angle : Math.round(driftDeg * 10) / 10,
-    yaw_rate_degs: typeof raw.yaw_rate_degs === 'number' ? raw.yaw_rate_degs : Math.round(yawRateDeg * 10) / 10,
+    drift_angle: typeof raw.drift_angle === 'number' ? (isMoving ? raw.drift_angle : 0) : Math.round(driftDeg * 10) / 10,
+    yaw_rate_degs: typeof raw.yaw_rate_degs === 'number' ? (isMoving ? raw.yaw_rate_degs : 0) : Math.round(yawRateDeg * 10) / 10,
     surface_rumble_fl: typeof raw.SurfaceRumbleFrontLeft === 'number' ? raw.SurfaceRumbleFrontLeft : 0,
     surface_rumble_fr: typeof raw.SurfaceRumbleFrontRight === 'number' ? raw.SurfaceRumbleFrontRight : 0,
     surface_rumble_rl: typeof raw.SurfaceRumbleRearLeft === 'number' ? raw.SurfaceRumbleRearLeft : 0,
@@ -307,6 +316,21 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
       const apiBase = getApiBaseUrl();
       const wsUrl = getTelemetryWsUrl();
 
+      // On Local HTTP LAN or Localhost -> Direct WebSocket connects in 1ms with ZERO renegotiation on tab switch!
+      const isLocalLan = typeof window !== 'undefined' && (
+        window.location.protocol === 'http:' || 
+        window.location.hostname === 'localhost' || 
+        window.location.hostname === '127.0.0.1' || 
+        window.location.hostname.startsWith('192.168.') || 
+        window.location.hostname.startsWith('10.') || 
+        window.location.hostname.startsWith('172.')
+      );
+
+      if (isLocalLan) {
+        fallbackToWebSocket();
+        return;
+      }
+
       let pairingCode: string | undefined;
       try {
         const params = new URLSearchParams(window.location.search);
@@ -319,7 +343,7 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {}
 
-      // 1. Attempt WebRTC DataChannel (Single Instance)
+      // 1. Attempt WebRTC DataChannel (For HTTPS Cloud Deployments)
       if (typeof RTCPeerConnection !== 'undefined') {
         try {
           if (webrtcClientRef.current) {
