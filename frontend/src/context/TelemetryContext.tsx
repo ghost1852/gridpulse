@@ -120,6 +120,8 @@ export interface TelemetryContextType {
   transport: TransportType;
   latencyMs: number;
   isDirectP2P: boolean;
+  candidateType: string;
+  transportLabel: string;
   packetRateHz: number;
   cloudTelemetryBytes: number;
   diagnostics?: WebRtcDiagnostics | null;
@@ -265,6 +267,7 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
   const [transport, setTransport] = useState<TransportType>('disconnected');
   const [latencyMs, setLatencyMs] = useState<number>(0);
   const [isDirectP2P, setIsDirectP2P] = useState<boolean>(false);
+  const [candidateType, setCandidateType] = useState<string>('host');
   const [packetRateHz, setPacketRateHz] = useState<number>(0);
   const [diagnostics, setDiagnostics] = useState<WebRtcDiagnostics | null>(null);
 
@@ -337,6 +340,7 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
             },
             onTransportInfo: (info) => {
               setIsDirectP2P(info.isDirectP2P);
+              setCandidateType(info.candidateType);
             },
             onDiagnostics: (diag) => {
               setDiagnostics(diag);
@@ -457,6 +461,23 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  let transportLabel = 'OFFLINE';
+  if (connected) {
+    if (transport === 'websocket_local') {
+      transportLabel = `DIRECT LAN (WebSocket) • ${latencyMs || '<2'}ms`;
+    } else if (transport === 'webrtc_p2p') {
+      if (candidateType === 'host') {
+        transportLabel = `DIRECT P2P (Host ➔ Host) • ${latencyMs}ms`;
+      } else if (candidateType === 'srflx' || candidateType === 'prflx') {
+        transportLabel = `DIRECT P2P (STUN WAN) • ${latencyMs}ms`;
+      } else if (candidateType === 'relay') {
+        transportLabel = `RELAY (TURN / UDP) • ${latencyMs}ms`;
+      } else {
+        transportLabel = `P2P (${candidateType}) • ${latencyMs}ms`;
+      }
+    }
+  }
+
   return (
     <TelemetryContext.Provider value={{
       telemetry,
@@ -466,6 +487,8 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
       transport,
       latencyMs,
       isDirectP2P,
+      candidateType,
+      transportLabel,
       packetRateHz,
       cloudTelemetryBytes: 0,
       diagnostics

@@ -129,12 +129,32 @@ export class WebRtcTelemetryClient {
     try {
       globalPcCount += 1;
       this.log(`🚀 Initializing RTCPeerConnection (Total PCs created: ${globalPcCount})`);
-      this.pc = new RTCPeerConnection({
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      });
+
+      const iceServers: RTCIceServer[] = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ];
+
+      // Support dynamic TURN configuration via URL query params or localStorage
+      try {
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          const turnUrl = params.get('turn') || (window as any).__GRIDPULSE_TURN_SERVER__ || localStorage.getItem('gridpulse_turn_server');
+          const turnUser = params.get('turn_user') || (window as any).__GRIDPULSE_TURN_USER__ || localStorage.getItem('gridpulse_turn_user');
+          const turnPass = params.get('turn_pass') || (window as any).__GRIDPULSE_TURN_PASS__ || localStorage.getItem('gridpulse_turn_pass');
+
+          if (turnUrl) {
+            this.log(`🌐 Configured WebRTC TURN relay fallback: ${turnUrl}`);
+            iceServers.push({
+              urls: turnUrl,
+              username: turnUser || undefined,
+              credential: turnPass || undefined
+            });
+          }
+        }
+      } catch {}
+
+      this.pc = new RTCPeerConnection({ iceServers });
 
       this.pc.onicecandidate = (event) => {
         if (event.candidate) {

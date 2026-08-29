@@ -22,7 +22,7 @@ export function App() {
     } catch {}
     return 'guide';
   });
-  const { connected } = useTelemetry();
+  const { connected, transportLabel } = useTelemetry();
 
   const tabs = [
     { id: 'hud' as const, label: 'HUD', icon: Gauge },
@@ -89,7 +89,7 @@ export function App() {
 
         {/* Desktop Footer Status */}
         <div className="p-3 border-t border-white/5 text-[11px] font-mono text-gray-500">
-          <div>Status: <span className={connected ? "text-emerald-400" : "text-yellow-400"}>{connected ? "Receiving 60Hz" : "Waiting for feed"}</span></div>
+          <div>Status: <span className={connected ? "text-emerald-400 font-bold" : "text-yellow-400"}>{transportLabel}</span></div>
         </div>
       </aside>
 
@@ -100,7 +100,7 @@ export function App() {
           <div className="flex items-center gap-2">
             <div className={cn("w-2 h-2 rounded-full", connected ? "bg-emerald-400 shadow-[0_0_8px_#00ff88]" : "bg-amber-400")} />
             <span className="font-mono font-black text-xs tracking-wider text-white">GRIDPULSE</span>
-            <span className="text-[9px] font-mono text-emerald-400 font-bold ml-1">{connected ? "60Hz P2P" : "STANDBY"}</span>
+            <span className="text-[9px] font-mono text-emerald-400 font-bold ml-1">{transportLabel}</span>
           </div>
           <div className="flex items-center gap-1">
             {tabs.map(tab => (

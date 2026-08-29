@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import socket
 from typing import Set, Dict, Any, List, Optional
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
@@ -11,14 +12,29 @@ logger = logging.getLogger("GridPulse.WebRTC")
 logging.getLogger("aioice.ice").setLevel(logging.DEBUG)
 logging.getLogger("aiortc.rtcicetransport").setLevel(logging.DEBUG)
 
-# Hook StunProtocol to explicitly distinguish physical interface vs virtual interface datagrams
+# Bidirectional STUN packet telemetry counters for physical network interface
+physical_stats = {
+    "outbound_requests": 0,
+    "inbound_requests": 0,
+    "inbound_responses": 0,
+    "outbound_responses": 0,
+}
+
 _orig_send_stun = aioice.ice.StunProtocol.send_stun
 def _hooked_send_stun(self, message, addr):
     local_host = getattr(self.local_candidate, 'host', 'unknown')
     local_port = getattr(self.local_candidate, 'port', 'unknown')
     is_physical = '192.168.88.' in str(local_host)
     if is_physical:
-        logger.info(f"📤 [PHYSICAL STUN SEND] {local_host}:{local_port} ➔ {addr[0]}:{addr[1]} | {message.message_method.name} {message.message_class.name} ({len(bytes(message))} bytes)")
+        tx_id = message.transaction_id.hex() if hasattr(message.transaction_id, 'hex') else str(message.transaction_id)
+        if message.message_class == aioice.stun.Class.REQUEST:
+            physical_stats["outbound_requests"] += 1
+            logger.info(f"📤 [PHYSICAL OUTBOUND REQUEST #{physical_stats['outbound_requests']}] {local_host}:{local_port} ➔ {addr[0]}:{addr[1]} | {message.message_method.name} {message.message_class.name} (TxID={tx_id}, {len(bytes(message))}B)")
+        elif message.message_class == aioice.stun.Class.RESPONSE:
+            physical_stats["outbound_responses"] += 1
+            logger.info(f"📤 [PHYSICAL OUTBOUND RESPONSE #{physical_stats['outbound_responses']}] {local_host}:{local_port} ➔ {addr[0]}:{addr[1]} | {message.message_method.name} {message.message_class.name} (TxID={tx_id}, {len(bytes(message))}B)")
+        else:
+            logger.info(f"📤 [PHYSICAL OUTBOUND STUN] {local_host}:{local_port} ➔ {addr[0]}:{addr[1]} | {message.message_method.name} {message.message_class.name} ({len(bytes(message))}B)")
     return _orig_send_stun(self, message, addr)
 aioice.ice.StunProtocol.send_stun = _hooked_send_stun
 
@@ -28,7 +44,19 @@ def _hooked_datagram_received(self, data, addr):
     local_port = getattr(self.local_candidate, 'port', 'unknown')
     is_physical = '192.168.88.' in str(local_host)
     if is_physical:
-        logger.info(f"📥 [PHYSICAL STUN RECV] {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} ({len(data)} bytes)")
+        try:
+            msg = aioice.stun.parse_message(data)
+            tx_id = msg.transaction_id.hex() if hasattr(msg.transaction_id, 'hex') else str(msg.transaction_id)
+            if msg.message_class == aioice.stun.Class.REQUEST:
+                physical_stats["inbound_requests"] += 1
+                logger.info(f"📥 [PHYSICAL INBOUND REQUEST #{physical_stats['inbound_requests']}] From {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} | Method={msg.message_method.name} Class={msg.message_class.name} (TxID={tx_id}, {len(data)}B)")
+            elif msg.message_class == aioice.stun.Class.RESPONSE:
+                physical_stats["inbound_responses"] += 1
+                logger.info(f"📥 [PHYSICAL INBOUND RESPONSE #{physical_stats['inbound_responses']}] From {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} | Method={msg.message_method.name} Class={msg.message_class.name} (TxID={tx_id}, {len(data)}B)")
+            else:
+                logger.info(f"📥 [PHYSICAL INBOUND STUN] From {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} ({len(data)}B)")
+        except Exception:
+            logger.info(f"📥 [PHYSICAL NON-STUN DATAGRAM] From {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} ({len(data)}B)")
     return _orig_datagram_received(self, data, addr)
 aioice.ice.StunProtocol.datagram_received = _hooked_datagram_received
 
@@ -43,7 +71,7 @@ async def _hooked_check_start(self, pair):
         logger.info(f"🔍 [PHYSICAL ICE CHECK START] Local: {local_host}:{local_port} ({getattr(pair.local_candidate, 'type', 'host')}) ➔ Remote: {remote_host}:{remote_port} ({getattr(pair.remote_candidate, 'type', 'srflx')})")
     res = await _orig_check_start(self, pair)
     if is_physical:
-        logger.info(f"🏁 [PHYSICAL ICE CHECK RESULT] Local: {local_host}:{local_port} ➔ Remote: {remote_host}:{remote_port} | Final State: {pair.state.name}")
+        logger.info(f"🏁 [PHYSICAL ICE CHECK RESULT] Local: {local_host}:{local_port} ➔ Remote: {remote_host}:{remote_port} | Final State: {pair.state.name} | Outbound Req={physical_stats['outbound_requests']}, Inbound Resp={physical_stats['inbound_responses']}, Inbound Req={physical_stats['inbound_requests']}")
     return res
 aioice.ice.Connection.check_start = _hooked_check_start
 
@@ -59,11 +87,11 @@ def get_primary_lan_ip() -> str:
     finally:
         s.close()
 
-def clean_sdp_candidates(raw_sdp: str, lan_ip: str) -> str:
+def clean_sdp_candidates(raw_sdp: str) -> str:
     """
-    Cleans and prioritizes SDP candidates in Bridge answer:
+    Cleans SDP candidates in Bridge answer:
     - Strips unroutable APIPA (169.254.*) addresses from virtual NICs.
-    - Places primary LAN candidate and STUN srflx first.
+    - Preserves all host, srflx, and relay candidates without altering RFC priorities.
     """
     lines = raw_sdp.splitlines()
     non_candidates: List[str] = []
@@ -78,15 +106,6 @@ def clean_sdp_candidates(raw_sdp: str, lan_ip: str) -> str:
             continue
         else:
             non_candidates.append(line)
-            
-    def _cand_rank(c: str) -> int:
-        if lan_ip in c:
-            return 0
-        if "typ srflx" in c:
-            return 1
-        return 2
-
-    candidates.sort(key=_cand_rank)
     
     result: List[str] = []
     candidates_inserted = False
@@ -105,15 +124,32 @@ def clean_sdp_candidates(raw_sdp: str, lan_ip: str) -> str:
     return "\r\n".join(result) + "\r\n"
 
 class WebRtcHost:
-    def __init__(self):
+    def __init__(self, turn_server: Optional[str] = None, turn_username: Optional[str] = None, turn_password: Optional[str] = None):
         self.pcs: Set[RTCPeerConnection] = set()
         self.active_datachannels: Set[Any] = set()
         self.lan_ip = get_primary_lan_ip()
-        self.config = RTCConfiguration(
-            iceServers=[
-                RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"])
-            ]
-        )
+        
+        # Primary STUN servers for Direct P2P
+        ice_servers = [
+            RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"])
+        ]
+        
+        # Optional TURN relay fallback via Environment Variables
+        turn_url = turn_server or os.environ.get("GRIDPULSE_TURN_SERVER", "").strip()
+        turn_user = turn_username or os.environ.get("GRIDPULSE_TURN_USER", "").strip()
+        turn_pass = turn_password or os.environ.get("GRIDPULSE_TURN_PASS", "").strip()
+        
+        if turn_url:
+            logger.info(f"🌐 Configured WebRTC TURN relay fallback: {turn_url}")
+            ice_servers.append(
+                RTCIceServer(
+                    urls=[turn_url],
+                    username=turn_user if turn_user else None,
+                    credential=turn_pass if turn_pass else None
+                )
+            )
+
+        self.config = RTCConfiguration(iceServers=ice_servers)
 
     async def handle_offer(self, sdp: str, sdp_type: str) -> Dict[str, str]:
         """Handles an incoming pure WebRTC SDP offer directly from Safari."""
@@ -152,7 +188,24 @@ class WebRtcHost:
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
             logger.info(f"[WebRTC Connection State] ➔ {pc.connectionState}")
-            if pc.connectionState == "closed":
+            if pc.connectionState == "connected":
+                try:
+                    ice_transport = pc.sctp.transport.transport
+                    selected_pair = getattr(ice_transport._connection, "_selected_pair", None) or getattr(ice_transport._connection, "_nominated_pair", None)
+                    if selected_pair:
+                        local_cand = selected_pair.local_candidate
+                        remote_cand = selected_pair.remote_candidate
+                        trans_type = "DIRECT P2P (Host)" if local_cand.type == "host" and remote_cand.type == "host" else (
+                            "DIRECT P2P (STUN WAN)" if local_cand.type == "srflx" or remote_cand.type == "srflx" else "RELAY (TURN)"
+                        )
+                        logger.info("=" * 54)
+                        logger.info(f"🏆 [ICE CONNECTED - SELECTED PAIR] ➔ {trans_type}")
+                        logger.info(f"   Local:  {local_cand.host}:{local_cand.port} ({local_cand.type})")
+                        logger.info(f"   Remote: {remote_cand.host}:{remote_cand.port} ({remote_cand.type})")
+                        logger.info("=" * 54)
+                except Exception as e:
+                    logger.debug(f"Could not inspect selected pair: {e}")
+            elif pc.connectionState == "closed":
                 self.pcs.discard(pc)
 
         # Log Remote Candidates from Offer
@@ -176,7 +229,7 @@ class WebRtcHost:
             await asyncio.sleep(0.05)
 
         raw_answer_sdp = pc.localDescription.sdp if pc.localDescription else ""
-        cleaned_sdp = clean_sdp_candidates(raw_answer_sdp, self.lan_ip)
+        cleaned_sdp = clean_sdp_candidates(raw_answer_sdp)
 
         logger.info("🏠 LOCAL BRIDGE CANDIDATES (ANSWER):")
         for line in cleaned_sdp.splitlines():
