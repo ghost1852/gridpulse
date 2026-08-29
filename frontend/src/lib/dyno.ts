@@ -12,6 +12,8 @@
  * 8. 100% Local-First Offline Persistence via IndexedDB
  */
 
+import { getCarInfo } from './cars';
+
 export interface DynoSample {
   t: number; // seconds
   rpm: number;
@@ -246,6 +248,23 @@ export class DynoRecorder {
     this.engineMaxRpm = maxRpm;
     this.engineIdleRpm = idleRpm;
 
+    // Dynamically resolve exact vehicle name, class, PI, drivetrain from live telemetry
+    if (telemetry.car_ordinal !== undefined || telemetry.car_performance_index !== undefined) {
+      const resolved = getCarInfo(
+        telemetry.car_ordinal,
+        telemetry.car_class_name,
+        telemetry.car_performance_index,
+        telemetry.drivetrain_name
+      );
+      this.carInfo = {
+        name: resolved.name,
+        ordinal: telemetry.car_ordinal || 0,
+        class: resolved.class,
+        pi: resolved.pi,
+        drivetrain: resolved.drivetrain
+      };
+    }
+
     const throttlePct = Math.round(((telemetry.accel || 0) / 255) * 100);
     const brakePct = Math.round(((telemetry.brake || 0) / 255) * 100);
     const gear = telemetry.gear || 0;
@@ -415,14 +434,13 @@ export class DynoRecorder {
     const sortedSamples = [...this.samples].sort((a, b) => a.rpm - b.rpm);
 
     for (const s of sortedSamples) {
-      if (s.hp <= 5 || s.torqueFtLb <= 5) continue;
       const bucketRpm = Math.round(s.rpm / 100) * 100;
       if (!bucketMap[bucketRpm]) {
         bucketMap[bucketRpm] = { hpSum: 0, tqSum: 0, tqNmSum: 0, boostSum: 0, count: 0 };
       }
-      bucketMap[bucketRpm].hpSum += s.hp;
-      bucketMap[bucketRpm].tqSum += s.torqueFtLb;
-      bucketMap[bucketRpm].tqNmSum += s.torqueNm;
+      bucketMap[bucketRpm].hpSum += Math.max(0, s.hp);
+      bucketMap[bucketRpm].tqSum += Math.max(0, s.torqueFtLb);
+      bucketMap[bucketRpm].tqNmSum += Math.max(0, s.torqueNm);
       bucketMap[bucketRpm].boostSum += s.boostPsi;
       bucketMap[bucketRpm].count += 1;
     }

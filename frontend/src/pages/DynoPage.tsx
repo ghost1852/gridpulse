@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useTelemetry } from '../hooks/useTelemetry';
@@ -66,6 +66,7 @@ export function DynoPage() {
   const [liveTq, setLiveTq] = useState(0);
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [showInstructions, setShowInstructions] = useState(true);
+  const isFinalizing = useRef(false);
 
   // Load Dyno Runs from IndexedDB
   const refreshRuns = async () => {
@@ -111,20 +112,26 @@ export function DynoPage() {
       setLiveHp(res.currentHp);
       setLiveTq(res.currentTq);
 
-      // Auto-finish & process power curve
-      if (res.stage === 'COOLDOWN') {
-        const timer = setTimeout(async () => {
-          const saved = await globalDynoRecorder.finishAndSave();
-          if (saved) {
-            await refreshRuns();
-            setSelectedRunId(saved.id);
+      // Auto-finish & process power curve immediately upon COOLDOWN
+      if (res.stage === 'COOLDOWN' && !isFinalizing.current) {
+        isFinalizing.current = true;
+        (async () => {
+          try {
+            const saved = await globalDynoRecorder.finishAndSave();
+            if (saved) {
+              await refreshRuns();
+              setSelectedRunId(saved.id);
+            }
+            if (!autoArm) {
+              setIsArmed(false);
+              globalDynoRecorder.disarm();
+            }
+          } catch (err) {
+            console.error('Error finalizing dyno run:', err);
+          } finally {
+            isFinalizing.current = false;
           }
-          if (!autoArm) {
-            setIsArmed(false);
-            globalDynoRecorder.disarm();
-          }
-        }, 500);
-        return () => clearTimeout(timer);
+        })();
       }
     }
   }, [telemetry, isArmed, autoArm, mode, targetGear]);
@@ -416,37 +423,45 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
               <div
                 key={run.id}
                 onClick={() => setSelectedRunId(run.id)}
-                className={`p-2.5 rounded-xl border transition-all cursor-pointer shrink-0 min-w-[210px] flex flex-col justify-between ${
+                className={`p-2.5 rounded-xl border transition-all cursor-pointer shrink-0 min-w-[220px] flex flex-col justify-between ${
                   isSelected
                     ? 'bg-emerald-950/40 border-emerald-400 shadow-md shadow-emerald-500/10'
                     : 'bg-[#0e0e16] border-white/10 hover:border-white/20'
                 }`}
               >
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-[10px] font-mono font-bold text-gray-400 truncate max-w-[140px]">
-                    {run.vehicle.name}
-                  </span>
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1.5 truncate max-w-[170px]">
+                    <Badge carClass={run.vehicle.class} className="text-[8px] px-1 py-0 shrink-0">
+                      {run.vehicle.class} {run.vehicle.pi}
+                    </Badge>
+                    <span className="text-[10px] font-mono font-bold text-gray-300 truncate">
+                      {run.vehicle.name}
+                    </span>
+                  </div>
                   <button
                     onClick={(e) => handleDeleteRun(run.id, e)}
-                    className="text-gray-500 hover:text-red-400 p-0.5 cursor-pointer"
+                    className="text-gray-500 hover:text-red-400 p-0.5 cursor-pointer shrink-0"
                   >
                     <Trash2 size={12} />
                   </button>
                 </div>
 
-                <div className="my-1">
+                <div className="my-1.5">
                   <div className="text-sm font-mono font-black text-emerald-400 flex items-center gap-2">
                     <span>{run.summary.peakHp} HP</span>
                     <span className="text-amber-400 text-xs font-normal">/ {run.summary.peakTorqueFtLb} ft-lb</span>
                   </div>
-                  <div className="text-[9px] font-mono text-gray-500">
-                    {run.mode === 'single_gear' ? `Gear ${run.targetGear} Pull` : 'Multi-Gear Sprint'} • {new Date(run.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <div className="text-[9px] font-mono text-gray-400 flex items-center justify-between mt-0.5">
+                    <span>{run.mode === 'single_gear' ? `Gear ${run.targetGear} Pull` : 'Multi-Gear'}</span>
+                    <span>{new Date(run.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between text-[9px] font-mono text-gray-400 pt-1 border-t border-white/5">
                   <span>@{run.summary.peakHpRpm} RPM</span>
-                  <span className="text-cyan-400">{run.summary.powerBandWidth} RPM Band</span>
+                  <span className={run.quality === 'FULL' ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                    {run.quality === 'FULL' ? 'FULL PULL' : 'PARTIAL'}
+                  </span>
                 </div>
               </div>
             );
