@@ -272,11 +272,23 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
         </div>
       </div>
 
+      {/* Live Recording Notice & No-Lap Warning */}
+      {isRecording && (preferredMode === 'TIME_ATTACK' || preferredMode === 'CIRCUIT') && recordSeconds >= 10 && (!telemetry?.current_lap || telemetry?.current_lap === 0) && (!telemetry?.last_lap || telemetry?.last_lap === 0) && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs font-mono text-amber-300 flex items-start gap-2.5 animate-fadeIn">
+          <AlertTriangle size={17} className="text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold text-white uppercase tracking-wider block mb-0.5">Game Not Broadcasting Lap Gates (Open-Road Drive)</span>
+            Forza Horizon only transmits lap timer gates in official sanctioned Circuit / Rivals events. During open-world driving, in-game lap fields stay at 0.00.
+          </div>
+        </div>
+      )}
+
       {/* Stint History Reel */}
       {stints.length > 0 ? (
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
           {stints.map((stint) => {
             const isSelected = stint.id === selectedStintId;
+            const hasLaps = stint.laps && stint.laps.length > 0;
             return (
               <div
                 key={stint.id}
@@ -312,7 +324,7 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
 
                 <div className="my-1">
                   <div className="text-xs font-mono font-black text-white">
-                    {stint.totalLaps} Laps • {formatLapTime(stint.bestLapTime)}
+                    {hasLaps ? `${stint.totalLaps} Laps • ${formatLapTime(stint.bestLapTime)}` : `${stint.totalDurationSeconds}s Open Stint`}
                   </div>
                   <div className="text-[9px] font-mono text-gray-500">
                     {new Date(stint.createdAt).toLocaleDateString()} {new Date(stint.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -559,6 +571,41 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
               </div>
             </Card>
           </div>
+
+          {/* Chart 3: 4-Corner Suspension Travel & Bottoming Detection */}
+          <Card className="p-4 bg-[#0e0e16] border-white/10 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity size={16} className="text-purple-400" />
+                <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                  4-Corner Suspension Travel &amp; Bump-Stop Clearance
+                </h3>
+              </div>
+              <div className="flex items-center gap-2 text-[9px] font-mono font-bold">
+                <span className="text-sky-400">FL</span>
+                <span className="text-cyan-300">FR</span>
+                <span className="text-amber-400">RL</span>
+                <span className="text-rose-400">RR</span>
+                <span className="text-red-500 font-bold ml-2">--- 5% Bump Stop Strike</span>
+              </div>
+            </div>
+
+            <div className="h-52 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
+                  <XAxis dataKey="t" stroke="#6b7280" fontSize={10} tickFormatter={(v) => `${v}s`} />
+                  <YAxis stroke="#9ca3af" fontSize={10} domain={[0, 1]} tickFormatter={(v) => `${Math.round(v * 100)}%`} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0a0a10', borderColor: '#ffffff20', borderRadius: '8px', fontSize: '11px', fontFamily: 'monospace' }} />
+                  <ReferenceLine y={0.05} stroke="#ef4444" strokeDasharray="3 3" label={{ value: 'BUMP-STOP', fill: '#ef4444', fontSize: 9 }} />
+                  <Line type="monotone" dataKey="suspFl" stroke="#38bdf8" strokeWidth={1.5} dot={false} isAnimationActive={false} name="FL Travel" />
+                  <Line type="monotone" dataKey="suspFr" stroke="#22d3ee" strokeWidth={1.5} dot={false} isAnimationActive={false} name="FR Travel" />
+                  <Line type="monotone" dataKey="suspRl" stroke="#f59e0b" strokeWidth={1.5} dot={false} isAnimationActive={false} name="RL Travel" />
+                  <Line type="monotone" dataKey="suspRr" stroke="#f43f5e" strokeWidth={1.5} dot={false} isAnimationActive={false} name="RR Travel" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
 
           {/* Stint Events Log */}
           {activeStint.events && activeStint.events.length > 0 && (

@@ -76,8 +76,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             </button>
 
             <a
-              href="/GridPulse-Bridge-Windows.zip"
-              download="GridPulse-Bridge-Windows.zip"
+              href="https://github.com/ghost1852/gridpulse/releases/latest/download/GridPulse-Bridge-Windows.zip"
               className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-bold text-sm uppercase tracking-wider transition-all cursor-pointer hover:border-emerald-400"
             >
               <Download size={16} className="text-emerald-400" />

@@ -28,9 +28,13 @@ export interface TelemetrySample {
   tempFr: number;
   tempRl: number;
   tempRr: number;
+  suspFl?: number; // 0-1 normalized suspension travel
+  suspFr?: number;
+  suspRl?: number;
+  suspRr?: number;
+  suspTravelMin: number;
   slipAngleDelta: number; // understeer/oversteer delta
   tractionPct: number;
-  suspTravelMin: number;
   lapNumber: number;
 }
 
@@ -100,6 +104,7 @@ export interface Stint {
   createdAt: number;
   sessionMode: SessionMode;
   userSetMode?: boolean;
+  qualityFlags?: string[];
   carName: string;
   carOrdinal: number;
   carClass: string;
@@ -325,11 +330,13 @@ export class StintRecorder {
   private initialDistance = 0;
   private lastDistance = 0;
   private preferredMode: SessionMode | null = null;
-  private lastTelemetry: any = null;
 
-  // Real-time impact tracking variables
-  private lastSpeed = 0;
+  // Ground distance integration
+  private groundDistanceMeters = 0;
   private lastSpeedTime = 0;
+
+  // Real-time impact & lap tracking
+  private lastSpeed = 0;
   private rearTempStart = 0;
   private slideDuration = 0;
   private transitionCount = 0;
@@ -339,6 +346,8 @@ export class StintRecorder {
   private jumpCount = 0;
   private maxLandingG = 0;
   private bottomingCount = 0;
+  private lastCurrentLap = 0;
+  private lastLapNumber = 1;
 
   public start(
     carInfo: { name: string; ordinal: number; class: string; pi: number; drivetrain: string }, 
@@ -361,8 +370,9 @@ export class StintRecorder {
     this.lastDistance = currentDistance;
     this.preferredMode = preferredMode;
 
-    this.lastSpeed = 0;
+    this.groundDistanceMeters = 0;
     this.lastSpeedTime = Date.now();
+    this.lastSpeed = 0;
     this.rearTempStart = 0;
     this.slideDuration = 0;
     this.transitionCount = 0;
@@ -372,11 +382,21 @@ export class StintRecorder {
     this.jumpCount = 0;
     this.maxLandingG = 0;
     this.bottomingCount = 0;
+    this.lastCurrentLap = 0;
+    this.lastLapNumber = 1;
+  }
+
+  public getActiveDuration(): number {
+    if (!this.isRecording || this.startTime === 0) return 0;
+    return (Date.now() - this.startTime) / 1000;
+  }
+
+  public getSamplesCount(): number {
+    return this.samples.length;
   }
 
   public processFrame(telemetry: any) {
     if (!this.isRecording || !telemetry) return;
-    this.lastTelemetry = telemetry;
 
     const now = Date.now();
     const elapsedSec = (now - this.startTime) / 1000;
@@ -387,6 +407,14 @@ export class StintRecorder {
     const gY = Math.abs((telemetry.acceleration_y || 0) / 9.81);
     const gZ = Math.abs((telemetry.acceleration_z || 0) / 9.81);
     const combinedG = Math.sqrt(gX * gX + gZ * gZ);
+
+    // Track ground distance integration using true linear speed
+    const dt = this.lastSpeedTime > 0 ? (now - this.lastSpeedTime) / 1000 : 0;
+    if (dt > 0.005 && dt < 0.5) {
+      if (currentSpeed > 0.5) {
+        this.groundDistanceMeters += (currentSpeed * 0.44704) * dt;
+      }
+    }
 
     // Track peak records
     if (currentSpeed > this.topSpeed) this.topSpeed = currentSpeed;
@@ -400,30 +428,57 @@ export class StintRecorder {
     const maxT = Math.max(telemetry.tire_temp_fl || 0, telemetry.tire_temp_fr || 0, telemetry.tire_temp_rl || 0, telemetry.tire_temp_rr || 0);
     if (maxT > this.peakTemp) this.peakTemp = maxT;
 
-    // Track completed laps
-    if (telemetry.lap_number && telemetry.last_lap > 0) {
-      if (!this.laps.has(telemetry.lap_number - 1)) {
-        this.laps.set(telemetry.lap_number - 1, {
-          lapNumber: telemetry.lap_number - 1,
-          lapTime: telemetry.last_lap,
+    // Track in-game completed laps
+    const currentLapTime = telemetry.current_lap || 0;
+    const lastLapTime = telemetry.last_lap || 0;
+    const lapNum = telemetry.lap_number || 1;
+
+    // 1. Game provided last_lap on new lap transition
+    if (lastLapTime > 0 && lapNum > 1) {
+      const completedLapIndex = lapNum - 1;
+      if (!this.laps.has(completedLapIndex) || this.laps.get(completedLapIndex)?.lapTime !== lastLapTime) {
+        this.laps.set(completedLapIndex, {
+          lapNumber: completedLapIndex,
+          lapTime: Number(lastLapTime.toFixed(3)),
           valid: true
         });
       }
     }
 
+    // 2. Lap number increased or currentLap reset
+    if (this.lastLapNumber > 0 && lapNum > this.lastLapNumber && this.lastCurrentLap > 5) {
+      const completedLap = this.lastLapNumber;
+      if (!this.laps.has(completedLap)) {
+        this.laps.set(completedLap, {
+          lapNumber: completedLap,
+          lapTime: Number((lastLapTime > 0 ? lastLapTime : this.lastCurrentLap).toFixed(3)),
+          valid: true
+        });
+      }
+    } else if (this.lastCurrentLap > 15 && currentLapTime < 2 && currentLapTime > 0) {
+      const completedLap = this.laps.size + 1;
+      if (!this.laps.has(completedLap)) {
+        this.laps.set(completedLap, {
+          lapNumber: completedLap,
+          lapTime: Number(this.lastCurrentLap.toFixed(3)),
+          valid: true
+        });
+      }
+    }
+    this.lastCurrentLap = currentLapTime;
+    this.lastLapNumber = lapNum;
+
     // =========================================================================
     // 1. PHYSICS-BASED WALL / BARRIER IMPACT DETECTION
     // =========================================================================
-    const dt = (now - this.lastSpeedTime) / 1000;
     if (dt > 0.04 && dt < 0.25) {
       const dSpeed = this.lastSpeed - currentSpeed;
       const brake = Math.round(((telemetry.brake || 0) / 255) * 100);
 
-      // Impact Signature: High G deceleration impulse or sudden speed drop with low brake pressure
       const isExtremeImpulse = combinedG >= 4.2;
-      const isAbruptSpeedDrop = dSpeed >= 12 && brake < 50;
+      const isAbruptSpeedDrop = dSpeed >= 14 && brake < 45;
 
-      if ((isExtremeImpulse || isAbruptSpeedDrop) && this.lastSpeed > 15) {
+      if ((isExtremeImpulse || isAbruptSpeedDrop) && this.lastSpeed > 20) {
         const severity: ImpactEvent['severity'] = combinedG >= 8.0 || dSpeed >= 35 
           ? 'SEVERE' 
           : combinedG >= 5.5 || dSpeed >= 20 
@@ -432,7 +487,7 @@ export class StintRecorder {
 
         const impact: ImpactEvent = {
           timestamp: Number(elapsedSec.toFixed(2)),
-          lapNumber: telemetry.lap_number || 1,
+          lapNumber: lapNum,
           impactG: Number(Math.max(combinedG, (dSpeed * 0.44704) / (dt * 9.81)).toFixed(1)),
           speedAtImpactMph: Math.round(this.lastSpeed),
           speedLostMph: Math.round(dSpeed),
@@ -441,7 +496,6 @@ export class StintRecorder {
           description: `${severity} wall impact @ ${Math.round(this.lastSpeed)} MPH (${Number(combinedG.toFixed(1))}G force, -${Math.round(dSpeed)} MPH lost)`
         };
 
-        // Debounce impacts within 1.5s
         const lastImpact = this.impacts[this.impacts.length - 1];
         if (!lastImpact || Math.abs(lastImpact.timestamp - impact.timestamp) > 1.5) {
           this.impacts.push(impact);
@@ -459,33 +513,32 @@ export class StintRecorder {
     this.lastSpeed = currentSpeed;
     this.lastSpeedTime = now;
 
-    // =========================================================================
-    // 2. OFFROAD JUMP & AIRBORNE DETECTION
-    // =========================================================================
-    const suspMin = Math.min(telemetry.susp_fl ?? 1, telemetry.susp_fr ?? 1, telemetry.susp_rl ?? 1, telemetry.susp_rr ?? 1);
-    const suspMax = Math.max(telemetry.susp_fl ?? 0, telemetry.susp_fr ?? 0, telemetry.susp_rl ?? 0, telemetry.susp_rr ?? 0);
+    // Suspension Values (Normalized: 0.0 = full bump/bottom, 1.0 = full droop/airborne)
+    const suspFl = Number((telemetry.susp_fl ?? 0.5).toFixed(3));
+    const suspFr = Number((telemetry.susp_fr ?? 0.5).toFixed(3));
+    const suspRl = Number((telemetry.susp_rl ?? 0.5).toFixed(3));
+    const suspRr = Number((telemetry.susp_rr ?? 0.5).toFixed(3));
+    const suspMin = Math.min(suspFl, suspFr, suspRl, suspRr);
+    const suspMax = Math.max(suspFl, suspFr, suspRl, suspRr);
 
-    // Full droop on all 4 corners indicates airborne status
+    // Airborne / Jump Detection
     if (suspMin > 0.85 && suspMax > 0.90 && currentSpeed > 25) {
       if (!this.isAirborne) {
         this.isAirborne = true;
         this.jumpAirTime = now;
       }
     } else if (this.isAirborne) {
-      // Landing detected
       this.isAirborne = false;
       const airDurationSec = (now - this.jumpAirTime) / 1000;
       if (airDurationSec >= 0.25) {
         this.jumpCount++;
         const landingG = Number(gY.toFixed(1));
         if (gY > this.maxLandingG) this.maxLandingG = gY;
-        this.addEventIfNew('JUMP_LANDING', Number(elapsedSec.toFixed(2)), telemetry.lap_number || 1, 0.7, `Jump landing (${airDurationSec.toFixed(2)}s airtime, ${landingG}G vert force)`);
+        this.addEventIfNew('JUMP_LANDING', Number(elapsedSec.toFixed(2)), lapNum, 0.7, `Jump landing (${airDurationSec.toFixed(2)}s airtime, ${landingG}G vert force)`);
       }
     }
 
-    // =========================================================================
-    // 3. DOWNSAMPLED TIME-SERIES LOGGING (10 Hz)
-    // =========================================================================
+    // Downsampled Time-Series Logging (10 Hz)
     if (now - this.lastSampleTime >= 100) {
       this.lastSampleTime = now;
 
@@ -493,15 +546,16 @@ export class StintRecorder {
       const rearSlip = (Math.abs(telemetry.slip_angle_rl || 0) + Math.abs(telemetry.slip_angle_rr || 0)) / 2;
       const slipDelta = rearSlip - frontSlip;
 
-      // Track drift transitions
+      // Track controlled drift transitions
       const steerVal = telemetry.steer || 0;
       const steerSign = steerVal > 20 ? 1 : steerVal < -20 ? -1 : 0;
-      if (steerSign !== 0 && this.lastSteerSign !== 0 && steerSign !== this.lastSteerSign && Math.abs(slipDelta) > 0.3) {
+      if (steerSign !== 0 && this.lastSteerSign !== 0 && steerSign !== this.lastSteerSign && Math.abs(slipDelta) > 0.35) {
         this.transitionCount++;
       }
       if (steerSign !== 0) this.lastSteerSign = steerSign;
 
-      if (Math.abs(slipDelta) > 0.25) {
+      // Track slide duration (> 20 MPH and sustained slipDelta > 0.35 rad / 20 deg)
+      if (currentSpeed > 20 && Math.abs(slipDelta) > 0.35 && Math.abs(slipDelta) < 1.4) {
         this.slideDuration += 0.1;
       }
 
@@ -521,24 +575,38 @@ export class StintRecorder {
         tempFr: Math.round(telemetry.tire_temp_fr || 0),
         tempRl: Math.round(telemetry.tire_temp_rl || 0),
         tempRr: Math.round(telemetry.tire_temp_rr || 0),
+        suspFl,
+        suspFr,
+        suspRl,
+        suspRr,
+        suspTravelMin: Number(suspMin.toFixed(3)),
         slipAngleDelta: Number(slipDelta.toFixed(3)),
         tractionPct: Math.min(100, Math.round((combinedG / 2.4) * 100)),
-        suspTravelMin: Number(suspMin.toFixed(3)),
-        lapNumber: telemetry.lap_number || 1
+        lapNumber: lapNum
       };
 
       this.samples.push(sample);
 
-      // Driving Event Triggers
-      if (sample.throttle > 70 && (Math.abs(telemetry.tire_slip_fl || 0) > 1.2 || Math.abs(telemetry.tire_slip_rl || 0) > 1.2)) {
-        this.addEventIfNew('WHEELSPIN', sample.t, sample.lapNumber, 0.8, 'Power wheelspin detected');
-      }
-      if (sample.brake > 80 && (Math.abs(telemetry.tire_slip_fl || 0) > 1.3 || Math.abs(telemetry.tire_slip_rl || 0) > 1.3)) {
-        this.addEventIfNew('LOCKUP', sample.t, sample.lapNumber, 0.9, 'Axle brake lockup detected');
-      }
-      if (sample.suspTravelMin < 0.04) {
+      // Bottoming Strikes (check each corner specifically)
+      if (suspMin < 0.05) {
         this.bottomingCount++;
-        this.addEventIfNew('BOTTOMING', sample.t, sample.lapNumber, 1.0, 'Suspension bump-stop compression');
+        const corner = suspFl < 0.05 ? 'FL' : suspFr < 0.05 ? 'FR' : suspRl < 0.05 ? 'RL' : 'RR';
+        this.addEventIfNew('BOTTOMING', sample.t, sample.lapNumber, 1.0, `${corner} suspension bump-stop strike (${Math.round(suspMin * 100)}% remaining)`);
+      }
+
+      // Wheelspin: Only true severe drive axle slip, not normal acceleration slip
+      const rearSlipRatio = Math.max(Math.abs(telemetry.tire_slip_rl || 0), Math.abs(telemetry.tire_slip_rr || 0));
+      const frontSlipRatio = Math.max(Math.abs(telemetry.tire_slip_fl || 0), Math.abs(telemetry.tire_slip_fr || 0));
+      const driveAxleSlip = this.carInfo?.drivetrain === 'FWD' ? frontSlipRatio : rearSlipRatio;
+
+      if (sample.throttle > 70 && driveAxleSlip > 2.5 && currentSpeed > 5) {
+        this.addEventIfNew('WHEELSPIN', sample.t, sample.lapNumber, 0.7, 'Severe drive-axle wheelspin');
+      }
+
+      // Lockup
+      const maxSlipRatio = Math.max(rearSlipRatio, frontSlipRatio);
+      if (sample.brake > 75 && maxSlipRatio > 2.8 && currentSpeed > 10) {
+        this.addEventIfNew('LOCKUP', sample.t, sample.lapNumber, 0.8, 'Axle brake lockup detected');
       }
     }
   }
@@ -561,34 +629,24 @@ export class StintRecorder {
     this.isRecording = false;
 
     const totalDuration = (Date.now() - this.startTime) / 1000;
-    const distanceMeters = Math.max(0, this.lastDistance - this.initialDistance);
-    const distanceMiles = distanceMeters * 0.000621371;
+    
+    // Accurate ground distance
+    const rawGameMeters = Math.max(0, this.lastDistance - this.initialDistance);
+    const finalDistanceMeters = this.groundDistanceMeters > 0 ? this.groundDistanceMeters : rawGameMeters;
+    const distanceMiles = finalDistanceMeters * 0.000621371;
 
-    let lapsList = Array.from(this.laps.values());
-    if (lapsList.length === 0 && totalDuration >= 5) {
-      const recordedLapTime = (this.lastTelemetry && this.lastTelemetry.current_lap > 3)
-        ? Number(this.lastTelemetry.current_lap.toFixed(3))
-        : Number(totalDuration.toFixed(3));
-      lapsList = [{
-        lapNumber: 1,
-        lapTime: recordedLapTime,
-        valid: true
-      }];
-    }
-    const bestLap = lapsList.length > 0 ? Math.min(...lapsList.map(l => l.lapTime)) : Number(totalDuration.toFixed(3));
+    const lapsList = Array.from(this.laps.values());
+    const hasRecordedLaps = lapsList.length > 0;
+    const bestLap = hasRecordedLaps ? Math.min(...lapsList.map(l => l.lapTime)) : 0;
 
-    // =========================================================================
-    // 4. STYLE-SPECIFIC SUMMARY CALCULATIONS
-    // =========================================================================
-    const maxSlipRad = Math.max(0, ...this.samples.map(s => Math.abs(s.slipAngleDelta || 0)));
+    // Derived style calculations
+    const slideSamples = this.samples.filter(s => s.speedMph > 20 && Math.abs(s.slipAngleDelta) >= 0.20 && Math.abs(s.slipAngleDelta) <= 1.35);
+    const maxSlipRad = slideSamples.length > 0 ? Math.max(...slideSamples.map(s => Math.abs(s.slipAngleDelta))) : 0;
     const maxSlipDeg = Math.round(maxSlipRad * (180 / Math.PI));
     const slidePct = totalDuration > 0 ? Math.min(100, Math.round((this.slideDuration / totalDuration) * 100)) : 0;
-    
-    // Rear temperature rise rate
+
     const rearTempDelta = Math.max(0, this.peakTemp - (this.rearTempStart || 100));
     const rearTempRiseRate = totalDuration > 0 ? Number((rearTempDelta / totalDuration).toFixed(2)) : 0;
-
-    const slideSamples = this.samples.filter(s => Math.abs(s.slipAngleDelta) > 0.25);
     const avgThrottleInSlide = slideSamples.length > 0 
       ? Math.round(slideSamples.reduce((acc, s) => acc + s.throttle, 0) / slideSamples.length) 
       : 0;
@@ -611,7 +669,7 @@ export class StintRecorder {
       roughnessIndex: Math.min(100, Math.round(this.bottomingCount * 10 + this.jumpCount * 15))
     };
 
-    const avgLap = lapsList.length > 0 
+    const avgLap = hasRecordedLaps 
       ? lapsList.reduce((a, b) => a + b.lapTime, 0) / lapsList.length 
       : 0;
     const lapVariance = lapsList.length > 1 
@@ -619,35 +677,38 @@ export class StintRecorder {
       : 0;
     const consistencyScorePct = lapsList.length > 1 
       ? Math.max(50, Math.min(100, Math.round(100 - (lapVariance / avgLap) * 100))) 
-      : 100;
+      : (hasRecordedLaps ? 100 : 0);
 
     const circuitSummary: CircuitSummary = {
       bestLap,
       avgLap: Number(avgLap.toFixed(3)),
       consistencyScorePct,
-      tireThermalSpread: Math.round(this.peakTemp - 120)
+      tireThermalSpread: Math.max(0, Math.round(this.peakTemp - 120))
     };
 
-    // =========================================================================
-    // 5. SESSION MODE AUTO-CLASSIFIER
-    // =========================================================================
+    // Mode Detection: Preferred Mode ALWAYS wins if set by user!
     let detectedMode: SessionMode = this.preferredMode || 'FREE_ROAM';
     if (!this.preferredMode) {
       const avgSpeedMph = totalDuration > 0 ? (distanceMiles / (totalDuration / 3600)) : 0;
-      if (slidePct >= 45 && maxSlipRad > 0.4) {
+      const isIntentionalDrift = (driftSummary.timeInSlideSec >= 4.0 && driftSummary.slidePct >= 35 && driftSummary.transitionCount >= 3 && maxSlipDeg >= 22);
+
+      if (isIntentionalDrift) {
         detectedMode = 'DRIFT';
-      } else if (this.jumpCount >= 2 || this.bottomingCount >= 4) {
+      } else if (this.jumpCount >= 2 || (this.jumpCount >= 1 && this.bottomingCount >= 3)) {
         detectedMode = 'OFFROAD';
       } else if (lapsList.length >= 2) {
         detectedMode = 'CIRCUIT';
-      } else if (bestLap > 0 || avgSpeedMph > 40) {
+      } else if (lapsList.length === 1 || bestLap > 0 || avgSpeedMph > 45) {
         detectedMode = 'TIME_ATTACK';
-      } else if (totalDuration < 35 && this.topSpeed > 70) {
+      } else if (totalDuration < 35 && this.topSpeed > 75) {
         detectedMode = 'SPRINT';
       } else {
         detectedMode = 'FREE_ROAM';
       }
     }
+
+    const qualityFlags: string[] = [];
+    if (!hasRecordedLaps) qualityFlags.push('NO_IN_GAME_LAPS');
 
     const stint: Stint = {
       id: `stint-${Date.now()}`,
@@ -655,6 +716,7 @@ export class StintRecorder {
       createdAt: Date.now(),
       sessionMode: detectedMode,
       userSetMode: !!this.preferredMode,
+      qualityFlags,
       carName: this.carInfo.name,
       carOrdinal: this.carInfo.ordinal,
       carClass: this.carInfo.class,
@@ -662,7 +724,7 @@ export class StintRecorder {
       drivetrain: this.carInfo.drivetrain,
       totalDurationSeconds: Math.round(totalDuration),
       totalDistanceMiles: Number(distanceMiles.toFixed(2)),
-      totalLaps: Math.max(1, lapsList.length),
+      totalLaps: lapsList.length,
       bestLapTime: bestLap,
       topSpeedMph: Math.round(this.topSpeed),
       peakLatG: Number(this.peakLat.toFixed(2)),
@@ -679,14 +741,6 @@ export class StintRecorder {
 
     await saveStint(stint);
     return stint;
-  }
-
-  public getActiveDuration(): number {
-    return this.isRecording ? (Date.now() - this.startTime) / 1000 : 0;
-  }
-
-  public getSampleCount(): number {
-    return this.samples.length;
   }
 
   public getIsRecording(): boolean {
