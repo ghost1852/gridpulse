@@ -6,18 +6,20 @@ import { Compass } from 'lucide-react';
 interface GForceCircleProps {
   accelX: number; // Lateral
   accelZ: number; // Longitudinal
+  slipAngleDelta?: number; // Optional understeer/oversteer delta
 }
 
 interface Point {
   x: number;
   y: number;
+  totalG: number;
 }
 
-export function GForceCircle({ accelX, accelZ }: GForceCircleProps) {
+export function GForceCircle({ accelX, accelZ, slipAngleDelta = 0 }: GForceCircleProps) {
   const gX = accelX / 9.81;
   const gZ = accelZ / 9.81;
-  const maxG = 2.0;
-  const radius = 40; // compact radius that fits comfortably
+  const maxG = 2.2;
+  const radius = 42; // compact radius that fits comfortably
   
   const dotX = Math.max(-radius, Math.min(radius, (gX / maxG) * radius));
   const dotY = Math.max(-radius, Math.min(radius, (gZ / maxG) * -radius));
@@ -25,21 +27,25 @@ export function GForceCircle({ accelX, accelZ }: GForceCircleProps) {
   const totalG = Math.sqrt(gX * gX + gZ * gZ);
   const isHighG = totalG > 1.3;
 
-  // Trail history
+  // Trail history & Peak-Hold calculations
   const [trail, setTrail] = useState<Point[]>([]);
   const peakLatRef = useRef(0);
   const peakLonRef = useRef(0);
+  const peakTotalGRef = useRef(0);
 
   if (Math.abs(gX) > peakLatRef.current) peakLatRef.current = Math.abs(gX);
   if (Math.abs(gZ) > peakLonRef.current) peakLonRef.current = Math.abs(gZ);
+  if (totalG > peakTotalGRef.current) peakTotalGRef.current = totalG;
 
   useEffect(() => {
     setTrail(prev => {
-      const next = [...prev, { x: dotX, y: dotY }];
-      if (next.length > 6) next.shift();
+      const next = [...prev, { x: dotX, y: dotY, totalG }];
+      if (next.length > 8) next.shift();
       return next;
     });
-  }, [dotX, dotY]);
+  }, [dotX, dotY, totalG]);
+
+  const peakRingRadius = Math.min(radius, (peakTotalGRef.current / maxG) * radius);
 
   return (
     <Card className="p-2.5 sm:p-3 h-full flex flex-col justify-between items-center relative overflow-hidden bg-[#0d0d14] border-white/10">
@@ -49,30 +55,45 @@ export function GForceCircle({ accelX, accelZ }: GForceCircleProps) {
           <Compass size={12} className="text-cyan-400" />
           <span>G-FORCE</span>
         </div>
-        <span className="text-xs font-mono font-bold text-white">
+        <span className="text-xs font-mono font-black text-white">
           {totalG.toFixed(2)} <span className="text-gray-500 font-normal">G</span>
         </span>
       </div>
 
-      {/* Friction Circle */}
-      <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full border border-white/20 bg-black/60 flex items-center justify-center my-1 shadow-inner shrink-0">
+      {/* Friction Circle & Peak Hold Ring */}
+      <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full border border-white/20 bg-black/70 flex items-center justify-center my-1 shadow-inner shrink-0">
         {/* Crosshairs */}
         <div className="absolute w-full h-[1px] bg-white/15" />
         <div className="absolute h-full w-[1px] bg-white/15" />
         
         {/* 1.0G, 2.0G concentric rings */}
         <div className="absolute w-12 h-12 rounded-full border border-dashed border-white/15" />
-        <span className="absolute top-0.5 text-[7px] font-mono text-gray-500">2G</span>
-        <span className="absolute top-4 text-[7px] font-mono text-gray-600">1G</span>
+        <span className="absolute top-0.5 text-[7px] font-mono text-gray-500 font-bold">2.0G</span>
+        <span className="absolute top-4 text-[7px] font-mono text-gray-600 font-bold">1.0G</span>
 
-        {/* Trail Ghost Dots */}
+        {/* Peak-Hold Dynamic Ring */}
+        {peakTotalGRef.current > 0.3 && (
+          <div 
+            className="absolute rounded-full border border-cyan-400/30 pointer-events-none transition-all duration-300"
+            style={{
+              width: `${peakRingRadius * 2}px`,
+              height: `${peakRingRadius * 2}px`
+            }}
+          />
+        )}
+
+        {/* Fading Particle Trail */}
         {trail.map((pt, i) => (
           <div
             key={i}
-            className="absolute w-1.5 h-1.5 rounded-full bg-cyan-400 pointer-events-none"
+            className="absolute rounded-full pointer-events-none transition-all duration-75"
             style={{
+              width: `${Math.max(2, (i + 1) * 0.5)}px`,
+              height: `${Math.max(2, (i + 1) * 0.5)}px`,
+              backgroundColor: pt.totalG > 1.2 ? '#ef4444' : '#00ff88',
               transform: `translate(${pt.x}px, ${pt.y}px)`,
-              opacity: (i + 1) / 8,
+              opacity: (i + 1) / 10,
+              boxShadow: (i === trail.length - 1) ? '0 0 6px #00ff88' : 'none'
             }}
           />
         ))}
@@ -82,12 +103,22 @@ export function GForceCircle({ accelX, accelZ }: GForceCircleProps) {
           className="absolute w-3 h-3 rounded-full z-10"
           style={{
             backgroundColor: isHighG ? '#ef4444' : '#00ff88',
-            boxShadow: isHighG ? '0 0 12px #ef4444' : '0 0 8px #00ff88'
+            boxShadow: isHighG ? '0 0 14px #ef4444' : '0 0 10px #00ff88'
           }}
           animate={{ x: dotX, y: dotY }}
-          transition={{ type: 'spring', stiffness: 600, damping: 30 }}
+          transition={{ type: 'spring', stiffness: 700, damping: 32 }}
         />
       </div>
+
+      {/* Slip / Oversteer Live Mini-Bar (if available) */}
+      {Math.abs(slipAngleDelta) > 0.04 && (
+        <div className="w-full flex items-center justify-between text-[9px] font-mono px-1 py-0.5 rounded bg-black/40 border border-white/5">
+          <span className="text-gray-500 font-bold uppercase">Slip</span>
+          <span className={`font-black ${slipAngleDelta > 0.08 ? 'text-amber-400' : 'text-cyan-400'}`}>
+            {slipAngleDelta > 0.08 ? `OVER +${(slipAngleDelta * (180/Math.PI)).toFixed(1)}°` : `UNDER ${(slipAngleDelta * (180/Math.PI)).toFixed(1)}°`}
+          </span>
+        </div>
+      )}
 
       {/* Peak Hold Indicators Footer */}
       <div className="w-full grid grid-cols-2 gap-1 text-center text-[10px] sm:text-xs font-mono pt-1 border-t border-white/5 shrink-0">

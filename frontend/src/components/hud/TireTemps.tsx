@@ -38,7 +38,7 @@ export function TireTemps({
   lastLap = 0,
   lapNumber = 0
 }: TireTempsProps) {
-  const { convertTemp, units } = useUnits();
+  const { convertTemp } = useUnits();
   const [inspectedCorner, setInspectedCorner] = useState<'FL' | 'FR' | 'RL' | 'RR' | null>(null);
   
   const getTempColor = (tempF: number) => {
@@ -138,12 +138,18 @@ export function TireTemps({
               style={{ backgroundColor: color }} 
             />
 
-            {/* Tire Temperature Value */}
+            {/* Tire Temperature Value & Status */}
             <span className="font-mono text-sm sm:text-base font-black text-white z-10 tracking-tight">
               {converted.value}°
             </span>
-            <span className="text-[7px] font-mono text-gray-400 font-semibold z-10 uppercase">
-              {units.temperature === 'c' ? 'C' : 'F'}
+            <span 
+              className="text-[6.5px] font-mono font-bold px-1 py-0.2 rounded z-10 uppercase mt-0.5"
+              style={{
+                backgroundColor: `${color}25`,
+                color: color
+              }}
+            >
+              {temp < 150 ? 'COLD' : temp < 205 ? 'OPTIMAL' : temp < 240 ? 'WARM' : 'HOT'}
             </span>
 
             {/* Bottom Grip / Slip Meter */}

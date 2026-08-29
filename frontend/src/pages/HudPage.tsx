@@ -168,8 +168,12 @@ export function HudPage() {
           suspRr={data.susp_rr}
         />
 
-        {/* G-Force Friction Circle Card */}
-        <GForceCircle accelX={data.acceleration_x} accelZ={data.acceleration_z} />
+        {/* G-Force Friction Circle Card with Slip Delta */}
+        <GForceCircle 
+          accelX={data.acceleration_x} 
+          accelZ={data.acceleration_z} 
+          slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
+        />
 
         {/* Bottom Nav Clearance Buffer */}
         <div className="h-6 pointer-events-none" />
@@ -240,7 +244,11 @@ export function HudPage() {
 
           {/* Right: G-Force Circle (col 3) */}
           <div className="col-span-3 flex flex-col justify-center">
-            <GForceCircle accelX={data.acceleration_x} accelZ={data.acceleration_z} />
+            <GForceCircle 
+              accelX={data.acceleration_x} 
+              accelZ={data.acceleration_z} 
+              slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
+            />
           </div>
         </div>
 

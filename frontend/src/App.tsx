@@ -23,7 +23,7 @@ export function App() {
     } catch {}
     return 'guide';
   });
-  const { connected, transportLabel } = useTelemetry();
+  const { connected, transportLabel, packetRateHz } = useTelemetry();
 
   const tabs = [
     { id: 'hud' as const, label: 'HUD', icon: Gauge },
@@ -36,8 +36,13 @@ export function App() {
     { id: 'settings' as const, label: 'Settings', icon: Settings },
   ];
 
+  const isLiveStream = connected && packetRateHz > 30;
+
   return (
-    <div className="flex h-screen w-screen bg-[#0a0a0f] text-white font-sans overflow-hidden">
+    <div className={cn(
+      "flex h-screen w-screen bg-[#0a0a0f] text-white font-sans overflow-hidden transition-all duration-300",
+      isLiveStream && "ring-1 ring-emerald-500/30"
+    )}>
       {/* Desktop Sidebar Navigation (Hidden on mobile & mobile landscape) */}
       <aside className="hidden lg:flex flex-col w-64 bg-[#111118] border-r border-white/5 shrink-0 z-40">
         {/* Brand */}
@@ -46,14 +51,16 @@ export function App() {
             onClick={() => setActiveTab('guide')}
             className="flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition-opacity"
           >
-            <div className="w-3 h-3 rounded-full bg-[var(--color-accent-primary)] shadow-[0_0_10px_#00ff88]" />
+            <div className={cn("w-3 h-3 rounded-full", connected ? "bg-emerald-400 shadow-[0_0_10px_#00ff88]" : "bg-amber-400")} />
             <span className="font-mono font-black text-lg tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
               GRIDPULSE
             </span>
           </div>
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-mono">
             <Radio size={10} className={connected ? "text-emerald-400 animate-pulse" : "text-yellow-400"} />
-            <span className="text-gray-400">{connected ? "60Hz" : "OFFLINE"}</span>
+            <span className={connected ? "text-emerald-400 font-bold" : "text-gray-400"}>
+              {connected ? `${packetRateHz || 60}Hz` : "OFFLINE"}
+            </span>
           </div>
         </div>
 

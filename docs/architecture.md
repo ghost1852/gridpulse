@@ -76,8 +76,8 @@ Gaming PC (Bridge.exe) ═════════════ Phone (PWA on WAN
                 (only during connection setup)
 ```
 * **Transport**: STUN-resolved reflexive candidate pair (`srflx`).
-* **Cloud Relay**: **0 Bytes**.
-* **TURN Policy**: TURN/cloud relay is intentionally unsupported. If NAT traversal prevents direct P2P establishment, GridPulse displays a clear diagnostic rather than silently degrading into expensive, latency-inducing cloud relay.
+* **Cloud Relay**: **0 Bytes** (direct UDP punchthrough).
+* **TURN Policy**: By default, GridPulse operates with zero cloud relay using public Google STUN. For restrictive symmetric corporate NATs, custom TURN server credentials can optionally be provided via environment variables (`GRIDPULSE_TURN_SERVER`, `GRIDPULSE_TURN_USER`, `GRIDPULSE_TURN_PASS`) or client settings.
 
 ### 3. Local Standalone Fallback (Same-Machine / Embedded)
 ```text
