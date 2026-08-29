@@ -51,10 +51,8 @@ wheels/
 .env.test.local
 .env.production.local
 
-# IDE & OS files
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.swp
-*.swo
+# Large Binary Releases
+*.exe
+*.zip
+frontend/public/*.exe
+frontend/public/*.zip
