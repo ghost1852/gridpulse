@@ -1,4 +1,14 @@
 import sys
+import os
+
+# Robust stdio null guards for PyInstaller bundled / windowed execution
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+if sys.stdin is None:
+    sys.stdin = open(os.devnull, "r", encoding="utf-8")
+
 import asyncio
 import json
 import logging
@@ -463,13 +473,23 @@ def main():
 
     try:
         import uvicorn
-        uvicorn.run(app, host=CONFIG["host"], port=CONFIG["port"])
+        # Safe logging configuration that prevents isatty() crash when bundled
+        log_config = uvicorn.config.LOGGING_CONFIG.copy()
+        if "formatters" in log_config:
+            for fmt_name in ["default", "access"]:
+                if fmt_name in log_config["formatters"]:
+                    log_config["formatters"][fmt_name]["use_colors"] = False
+
+        uvicorn.run(app, host=CONFIG["host"], port=CONFIG["port"], log_config=log_config)
     except Exception as e:
         logger.error(f"Fatal error running GridPulse server: {e}")
         import traceback
         traceback.print_exc()
-        if getattr(sys, 'frozen', False):
-            input("\n[ERROR] An error occurred. Press Enter to exit...")
+        if getattr(sys, 'frozen', False) and sys.stdin and hasattr(sys.stdin, 'isatty') and sys.stdin.isatty():
+            try:
+                input("\n[ERROR] An error occurred. Press Enter to exit...")
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     main()
