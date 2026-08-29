@@ -4,10 +4,49 @@ import logging
 import socket
 from typing import Set, Dict, Any, List, Optional
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
+import aioice.ice
+import aioice.stun
 
 logger = logging.getLogger("GridPulse.WebRTC")
 logging.getLogger("aioice.ice").setLevel(logging.DEBUG)
 logging.getLogger("aiortc.rtcicetransport").setLevel(logging.DEBUG)
+
+# Hook StunProtocol to explicitly distinguish physical interface vs virtual interface datagrams
+_orig_send_stun = aioice.ice.StunProtocol.send_stun
+def _hooked_send_stun(self, message, addr):
+    local_host = getattr(self.local_candidate, 'host', 'unknown')
+    local_port = getattr(self.local_candidate, 'port', 'unknown')
+    is_physical = '192.168.88.' in str(local_host)
+    if is_physical:
+        logger.info(f"📤 [PHYSICAL STUN SEND] {local_host}:{local_port} ➔ {addr[0]}:{addr[1]} | {message.message_method.name} {message.message_class.name} ({len(bytes(message))} bytes)")
+    return _orig_send_stun(self, message, addr)
+aioice.ice.StunProtocol.send_stun = _hooked_send_stun
+
+_orig_datagram_received = aioice.ice.StunProtocol.datagram_received
+def _hooked_datagram_received(self, data, addr):
+    local_host = getattr(self.local_candidate, 'host', 'unknown')
+    local_port = getattr(self.local_candidate, 'port', 'unknown')
+    is_physical = '192.168.88.' in str(local_host)
+    if is_physical:
+        logger.info(f"📥 [PHYSICAL STUN RECV] {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} ({len(data)} bytes)")
+    return _orig_datagram_received(self, data, addr)
+aioice.ice.StunProtocol.datagram_received = _hooked_datagram_received
+
+_orig_check_start = aioice.ice.Connection.check_start
+async def _hooked_check_start(self, pair):
+    local_host = getattr(pair.local_candidate, 'host', 'unknown')
+    local_port = getattr(pair.local_candidate, 'port', 'unknown')
+    remote_host = getattr(pair.remote_candidate, 'host', 'unknown')
+    remote_port = getattr(pair.remote_candidate, 'port', 'unknown')
+    is_physical = '192.168.88.' in str(local_host)
+    if is_physical:
+        logger.info(f"🔍 [PHYSICAL ICE CHECK START] Local: {local_host}:{local_port} ({getattr(pair.local_candidate, 'type', 'host')}) ➔ Remote: {remote_host}:{remote_port} ({getattr(pair.remote_candidate, 'type', 'srflx')})")
+    res = await _orig_check_start(self, pair)
+    if is_physical:
+        logger.info(f"🏁 [PHYSICAL ICE CHECK RESULT] Local: {local_host}:{local_port} ➔ Remote: {remote_host}:{remote_port} | Final State: {pair.state.name}")
+    return res
+aioice.ice.Connection.check_start = _hooked_check_start
+
 
 def get_primary_lan_ip() -> str:
     """Determines the primary LAN IPv4 address of this machine."""
@@ -116,6 +155,13 @@ class WebRtcHost:
             if pc.connectionState == "closed":
                 self.pcs.discard(pc)
 
+        # Log Remote Candidates from Offer
+        logger.info("\n" + "=" * 54)
+        logger.info("📡 REMOTE CLIENT CANDIDATES (FROM SDP OFFER):")
+        for line in sdp.splitlines():
+            if line.startswith("a=candidate:"):
+                logger.info(f"   {line[12:]}")
+
         # Apply pure, unaltered SDP offer from client
         offer = RTCSessionDescription(sdp=sdp, type=sdp_type)
         await pc.setRemoteDescription(offer)
@@ -131,6 +177,12 @@ class WebRtcHost:
 
         raw_answer_sdp = pc.localDescription.sdp if pc.localDescription else ""
         cleaned_sdp = clean_sdp_candidates(raw_answer_sdp, self.lan_ip)
+
+        logger.info("🏠 LOCAL BRIDGE CANDIDATES (ANSWER):")
+        for line in cleaned_sdp.splitlines():
+            if line.startswith("a=candidate:"):
+                logger.info(f"   {line[12:]}")
+        logger.info("=" * 54 + "\n")
 
         return {
             "sdp": cleaned_sdp,
