@@ -57,11 +57,12 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           </div>
 
           {/* Quick Architectural Callout */}
+          {/* Architecture Badge */}
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 max-w-3xl text-xs font-mono text-emerald-300 flex items-start gap-2.5">
             <ShieldCheck size={18} className="text-emerald-400 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-white uppercase tracking-wider block mb-0.5">Zero Telemetry Relay Architecture</span>
-              GridPulse uses Wranglr for ephemeral WebRTC signaling. Once paired, live telemetry flows directly between your PC and phone over an encrypted WebRTC DataChannel. <strong>Zero telemetry bytes are ever relayed through cloud servers.</strong>
+              <span className="font-bold text-white uppercase tracking-wider block mb-0.5">100% Local-First LAN Architecture</span>
+              GridPulse runs strictly on your local home network. Telemetry streams directly from Forza UDP into your browser over fast local WebSockets with sub-millisecond latency. <strong>Zero cloud telemetry relays or external dependencies.</strong>
             </div>
           </div>
 
@@ -76,11 +77,12 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
             </button>
 
             <a
-              href="https://github.com/ghost1852/gridpulse/releases/download/v2.1.0/GridPulse-Bridge-Windows.zip"
+              href="/GridPulse-Bridge-Windows.zip"
+              download="GridPulse-Bridge-Windows.zip"
               className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/20 text-white font-bold text-sm uppercase tracking-wider transition-all cursor-pointer hover:border-emerald-400"
             >
               <Download size={16} className="text-emerald-400" />
-              <span>Download Windows Bridge (.EXE)</span>
+              <span>Download Windows Bridge (.ZIP)</span>
             </a>
           </div>
 
@@ -88,19 +90,19 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-4 font-mono text-xs text-gray-400 border-t border-white/10">
             <div className="flex items-center gap-2">
               <Lock size={15} className="text-emerald-400" />
-              <span>Zero Cloud Relay</span>
+              <span>100% Local LAN</span>
             </div>
             <div className="flex items-center gap-2">
               <Wifi size={15} className="text-cyan-400" />
-              <span>Direct WebRTC P2P</span>
+              <span>Direct WebSocket Stream</span>
             </div>
             <div className="flex items-center gap-2">
               <Activity size={15} className="text-amber-400" />
-              <span>High-Frequency (~60-100Hz)</span>
+              <span>High-Frequency (60–100Hz)</span>
             </div>
             <div className="flex items-center gap-2">
               <Smartphone size={15} className="text-rose-400" />
-              <span>Sub-2ms Mobile RTT</span>
+              <span>Sub-1ms Local Latency</span>
             </div>
           </div>
         </div>
@@ -127,12 +129,17 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                 </div>
                 <h3 className="text-sm font-bold text-white uppercase">Run Bridge.exe</h3>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Download and run <span className="text-white font-bold">GridPulse-Bridge.exe</span> on your gaming PC. It opens the local UDP port 20066 and displays a QR code with a 6-digit session code.
+                  Download and run <span className="text-white font-bold">GridPulse-Bridge.exe</span> on your gaming PC. It opens the local UDP port 20066 and displays a local QR code and URL.
                 </p>
               </div>
-              <div className="text-[10px] text-gray-500 bg-black/40 p-2 rounded border border-white/5">
-                No Python or Node.js required. Standalone Windows executable.
-              </div>
+              <a
+                href="/GridPulse-Bridge-Windows.zip"
+                download="GridPulse-Bridge-Windows.zip"
+                className="flex items-center justify-center gap-1.5 w-full py-1.5 px-2.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-[11px] font-bold text-emerald-300 transition-colors cursor-pointer text-center"
+              >
+                <Download size={13} />
+                <span>Download Bridge (.ZIP)</span>
+              </a>
             </Card>
 
             {/* Step 2 */}

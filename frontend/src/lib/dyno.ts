@@ -322,8 +322,8 @@ export class DynoRecorder {
       const allowBrakeSettling = pullElapsedSec < 0.3; // Ignore brake during first 0.3s of launch
 
       const isBraking = !allowBrakeSettling && brakePct >= 18;
-      const isWrongGear = this.mode === 'single_gear' && gear !== this.targetGear;
-      const isLifting = throttlePct < 65;
+      const isWrongGear = this.mode === 'single_gear' ? (gear !== this.targetGear) : (gear === 0 || gear === 255);
+      const isLifting = throttlePct < 60;
 
       // Track intentional brake
       if (isBraking) {
@@ -332,52 +332,59 @@ export class DynoRecorder {
         this.brakeStartTime = 0;
       }
 
-      // Track sustained gear shift
+      // Track sustained wrong gear (e.g. shifted into reverse or neutral for >= 0.6s)
       if (isWrongGear) {
         if (this.gearShiftStartTime === 0) this.gearShiftStartTime = now;
       } else {
         this.gearShiftStartTime = 0;
       }
 
-      // Track sustained throttle lift
+      // Track sustained throttle lift (multi_gear gives 1.4s grace for clutch/shifting, single_gear gives 0.85s)
+      const liftThresholdMs = this.mode === 'multi_gear' ? 1400 : 850;
       if (isLifting) {
         if (this.liftStartTime === 0) this.liftStartTime = now;
         statusDetail = 'ENDING – THROTTLE RELEASED...';
       } else {
         this.liftStartTime = 0;
-        statusDetail = throttlePct >= 88 ? 'PULLING – FULL WOT' : 'PULLING – MODULATING (RECORDING)';
+        if (this.mode === 'multi_gear') {
+          statusDetail = `MULTI-GEAR SPRINT – GEAR ${gear} PULLING (${speedMph} MPH)`;
+        } else {
+          statusDetail = throttlePct >= 88 ? 'PULLING – FULL WOT' : 'PULLING – MODULATING (RECORDING)';
+        }
       }
 
-      // Accept sample if still in gear and not hard braking
-      if (isCorrectGear && !isBraking && throttlePct >= 65) {
-        this.samples.push({
-          t: Number(pullElapsedSec.toFixed(2)),
-          rpm: Math.round(rpm),
-          speedMph,
-          speedKph,
-          hp: Math.max(0, hp),
-          torqueFtLb: Math.max(0, torqueFtLb),
-          torqueNm: Math.max(0, torqueNm),
-          gear,
-          throttle: throttlePct,
-          boostPsi
-        });
+      // In single_gear mode ONLY: Detect engine hitting rev-limiter & falling
+      if (this.mode === 'single_gear' && rpm >= maxRpm * 0.98 && this.samples.length > 30) {
+        const recentSamples = this.samples.slice(-8);
+        const maxRecent = Math.max(...recentSamples.map(s => s.rpm));
+        if (rpm < maxRecent - 100) {
+          this.stage = 'COOLDOWN';
+          statusDetail = 'REDLINE HIT – PROCESSING PULL...';
+        }
+      }
 
-        // Detect engine hitting rev-limiter & falling
-        if (rpm >= maxRpm * 0.98 && this.samples.length > 30) {
-          const recentSamples = this.samples.slice(-8);
-          const maxRecent = Math.max(...recentSamples.map(s => s.rpm));
-          if (rpm < maxRecent - 100) {
-            this.stage = 'COOLDOWN';
-            statusDetail = 'REDLINE HIT – PROCESSING PULL...';
-          }
+      // Accept sample if in valid gear and not hard braking
+      if (!isWrongGear && !isBraking && (throttlePct >= 50 || this.mode === 'multi_gear')) {
+        if (hp > 0 || torqueFtLb > 0 || speedMph > 0) {
+          this.samples.push({
+            t: Number(pullElapsedSec.toFixed(2)),
+            rpm: Math.round(rpm),
+            speedMph,
+            speedKph,
+            hp: Math.max(0, hp),
+            torqueFtLb: Math.max(0, torqueFtLb),
+            torqueNm: Math.max(0, torqueNm),
+            gear,
+            throttle: throttlePct,
+            boostPsi
+          });
         }
       }
 
       // Evaluate End Triggers
-      const sustainedLift = this.liftStartTime > 0 && now - this.liftStartTime >= 850;
+      const sustainedLift = this.liftStartTime > 0 && now - this.liftStartTime >= liftThresholdMs;
       const sustainedBrake = this.brakeStartTime > 0 && now - this.brakeStartTime >= 250;
-      const sustainedShift = this.gearShiftStartTime > 0 && now - this.gearShiftStartTime >= 500;
+      const sustainedShift = this.gearShiftStartTime > 0 && now - this.gearShiftStartTime >= 600;
 
       if (sustainedLift || sustainedBrake || sustainedShift) {
         if (this.samples.length >= 25) {

@@ -110,15 +110,23 @@ export function GForceCircle({ accelX, accelZ, slipAngleDelta = 0 }: GForceCircl
         />
       </div>
 
-      {/* Slip / Oversteer Live Mini-Bar (if available) */}
-      {Math.abs(slipAngleDelta) > 0.04 && (
-        <div className="w-full flex items-center justify-between text-[9px] font-mono px-1 py-0.5 rounded bg-black/40 border border-white/5">
-          <span className="text-gray-500 font-bold uppercase">Slip</span>
-          <span className={`font-black ${slipAngleDelta > 0.08 ? 'text-amber-400' : 'text-cyan-400'}`}>
-            {slipAngleDelta > 0.08 ? `OVER +${(slipAngleDelta * (180/Math.PI)).toFixed(1)}°` : `UNDER ${(slipAngleDelta * (180/Math.PI)).toFixed(1)}°`}
-          </span>
-        </div>
-      )}
+      {/* Slip / Oversteer Live Mini-Bar (Always rendered with stable height to prevent layout jumps) */}
+      <div className="w-full flex items-center justify-between text-[9px] font-mono px-2 py-0.5 rounded bg-black/40 border border-white/5 shrink-0 h-5">
+        <span className="text-gray-500 font-bold uppercase">Slip</span>
+        <span className={`font-black ${
+          Math.abs(slipAngleDelta) <= 0.04 
+            ? 'text-gray-500' 
+            : slipAngleDelta > 0.08 
+            ? 'text-amber-400' 
+            : 'text-cyan-400'
+        }`}>
+          {Math.abs(slipAngleDelta) <= 0.04 
+            ? 'NEUTRAL' 
+            : slipAngleDelta > 0.08 
+            ? `OVER +${(slipAngleDelta * (180/Math.PI)).toFixed(1)}°` 
+            : `UNDER ${(slipAngleDelta * (180/Math.PI)).toFixed(1)}°`}
+        </span>
+      </div>
 
       {/* Peak Hold Indicators Footer */}
       <div className="w-full grid grid-cols-2 gap-1 text-center text-[10px] sm:text-xs font-mono pt-1 border-t border-white/5 shrink-0">

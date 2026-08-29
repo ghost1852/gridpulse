@@ -178,6 +178,31 @@ export function DynoPage() {
     return dynoRuns.find(r => r.id === selectedRunId) || null;
   }, [dynoRuns, selectedRunId]);
 
+  // Combine multi-gear curves into a unified speed-indexed series for charting
+  const multiGearChartData = useMemo(() => {
+    if (!activeRun || activeRun.mode !== 'multi_gear' || !activeRun.perGearCurves) return [];
+    const speedMap: Record<number, Record<string, any>> = {};
+    const gears = Object.keys(activeRun.perGearCurves).map(Number).sort((a, b) => a - b);
+    
+    for (const g of gears) {
+      const points = activeRun.perGearCurves[g];
+      for (const pt of points) {
+        const roundedSpeed = Math.round(units.speed === 'mph' ? pt.speedMph : pt.speedKph);
+        if (roundedSpeed <= 0) continue;
+        if (!speedMap[roundedSpeed]) {
+          speedMap[roundedSpeed] = { speed: roundedSpeed };
+        }
+        speedMap[roundedSpeed][`gear_${g}_hp`] = pt.hp;
+        speedMap[roundedSpeed][`gear_${g}_tq`] = pt.torqueFtLb;
+      }
+    }
+    
+    return Object.keys(speedMap)
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map(spd => speedMap[spd]);
+  }, [activeRun, units.speed]);
+
   const copyAiPrompt = async () => {
     if (!activeRun) return;
     const prompt = `### GridPulse Virtual Dyno Power & Gearing Analysis Request
@@ -203,103 +228,105 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
   };
 
   return (
-    <div className="p-3 sm:p-4 max-w-6xl mx-auto space-y-4 pb-32">
+    <div className="p-2 sm:p-4 max-w-6xl mx-auto space-y-3 sm:space-y-4 pb-32 w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header Banner & Mode Selector */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#11111a] border border-white/10 rounded-2xl p-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black font-mono text-white tracking-wider flex items-center gap-2">
-              <Zap size={20} className="text-emerald-400" />
-              VIRTUAL CHASSIS DYNO &amp; POWER LAB
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#11111a] border border-white/10 rounded-2xl p-3 sm:p-4 min-w-0 w-full">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-base sm:text-xl font-black font-mono text-white tracking-wider flex items-center gap-2">
+              <Zap size={18} className="text-emerald-400 shrink-0" />
+              <span>VIRTUAL CHASSIS DYNO</span>
             </h1>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 shrink-0">
               AUTO-ARMING
             </span>
           </div>
-          <p className="text-xs font-mono text-gray-400 mt-1">
+          <p className="text-[11px] sm:text-xs font-mono text-gray-400 mt-1">
             Hands-free pull detection. Stage in gear, floor throttle to redline, and lift/brake to record.
           </p>
         </div>
 
         {/* Mode Toggle & Pull Trigger */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
           {/* Mode Pill */}
-          <div className="flex bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono">
+          <div className="grid grid-cols-2 gap-1 bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono w-full sm:w-auto">
             <button
               onClick={() => setMode('single_gear')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              className={`px-2 py-1.5 rounded-lg font-bold transition-all cursor-pointer text-xs text-center ${
                 mode === 'single_gear'
                   ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              Single-Gear (RPM)
+              Single-Gear
             </button>
             <button
               onClick={() => setMode('multi_gear')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              className={`px-2 py-1.5 rounded-lg font-bold transition-all cursor-pointer text-xs text-center ${
                 mode === 'multi_gear'
                   ? 'bg-cyan-500 text-black shadow-md shadow-cyan-500/20'
                   : 'text-gray-400 hover:text-white'
               }`}
             >
-              Multi-Gear (Speed)
+              Multi-Gear
             </button>
           </div>
 
-          {/* Target Gear Selector (Single-Gear Mode) */}
-          {mode === 'single_gear' && (
-            <div className="flex items-center gap-1.5 bg-black/60 px-2.5 py-1.5 rounded-xl border border-white/10 text-xs font-mono">
-              <span className="text-gray-400 text-[10px] font-bold uppercase">GEAR:</span>
-              <select
-                value={targetGear}
-                onChange={(e) => setTargetGear(parseInt(e.target.value, 10))}
-                className="bg-transparent text-white font-bold outline-none cursor-pointer"
-              >
-                <option value={3} className="bg-[#111118]">3rd Gear</option>
-                <option value={4} className="bg-[#111118]">4th Gear (Rec)</option>
-                <option value={5} className="bg-[#111118]">5th Gear (Rec)</option>
-                <option value={6} className="bg-[#111118]">6th Gear</option>
-              </select>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-start">
+            {/* Target Gear Selector (Single-Gear Mode) */}
+            {mode === 'single_gear' && (
+              <div className="flex items-center gap-1 bg-black/60 px-2 py-1.5 rounded-xl border border-white/10 text-xs font-mono shrink-0">
+                <span className="text-gray-400 text-[10px] font-bold uppercase">GEAR:</span>
+                <select
+                  value={targetGear}
+                  onChange={(e) => setTargetGear(parseInt(e.target.value, 10))}
+                  className="bg-transparent text-white font-bold outline-none cursor-pointer text-xs"
+                >
+                  <option value={3} className="bg-[#111118]">3rd</option>
+                  <option value={4} className="bg-[#111118]">4th</option>
+                  <option value={5} className="bg-[#111118]">5th</option>
+                  <option value={6} className="bg-[#111118]">6th</option>
+                </select>
+              </div>
+            )}
 
-          {/* Auto-ReArm Toggle */}
-          <button
-            onClick={() => setAutoArm(!autoArm)}
-            title={autoArm ? 'Auto-ReArm: Re-arms immediately after each dyno pull' : 'Single-Run Mode: Disarms after pull'}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border ${
-              autoArm 
-                ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300' 
-                : 'bg-black/60 border-white/10 text-gray-400 hover:text-white'
-            }`}
-          >
-            <RotateCcw size={12} className={autoArm ? 'animate-spin-slow' : ''} />
-            <span className="text-[11px]">{autoArm ? 'AUTO-REARM: ON' : 'AUTO-REARM: OFF'}</span>
-          </button>
+            {/* Auto-ReArm Toggle */}
+            <button
+              onClick={() => setAutoArm(!autoArm)}
+              title={autoArm ? 'Auto-ReArm: Re-arms immediately after each dyno pull' : 'Single-Run Mode: Disarms after pull'}
+              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border shrink-0 ${
+                autoArm 
+                  ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300' 
+                  : 'bg-black/60 border-white/10 text-gray-400 hover:text-white'
+              }`}
+            >
+              <RotateCcw size={11} />
+              <span className="text-[10px]">{autoArm ? 'RE-ARM: ON' : 'RE-ARM: OFF'}</span>
+            </button>
 
-          {/* Arm / Disarm Toggle Button */}
-          <button
-            onClick={toggleDynoArm}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-mono font-black tracking-wider transition-all cursor-pointer shadow-lg ${
-              isArmed
-                ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
-                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-white/10'
-            }`}
-          >
-            <Zap size={14} className={isArmed ? 'fill-current' : ''} />
-            <span>{isArmed ? 'ARMED' : 'DISARMED'}</span>
-          </button>
+            {/* Arm / Disarm Toggle Button */}
+            <button
+              onClick={toggleDynoArm}
+              className={`flex-1 sm:flex-none flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl text-xs font-mono font-black tracking-wider transition-all cursor-pointer shadow-lg shrink-0 ${
+                isArmed
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                  : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-white/10'
+              }`}
+            >
+              <Zap size={13} className={isArmed ? 'fill-current' : ''} />
+              <span>{isArmed ? 'ARMED' : 'DISARMED'}</span>
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Live Auto-Arming Staging Banner */}
-      <Card className="p-4 bg-[#0e0e16] border-white/10 space-y-3">
+      <Card className="p-3 sm:p-4 bg-[#0e0e16] border-white/10 space-y-3 min-w-0 w-full overflow-hidden">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Gauge size={16} className="text-emerald-400" />
+            <Gauge size={16} className="text-emerald-400 shrink-0" />
             <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-              {isArmed ? 'Live Dyno Staging & Auto-Pull Detection' : 'Dyno Standby (Click ARM to Begin)'}
+              {isArmed ? 'Live Dyno Staging & Auto-Pull' : 'Dyno Standby'}
             </h3>
           </div>
           <button 
@@ -307,16 +334,16 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
             className="text-gray-500 hover:text-gray-300 text-xs font-mono flex items-center gap-1 cursor-pointer"
           >
             <HelpCircle size={14} />
-            <span>{showInstructions ? 'Hide Guide' : 'Show Guide'}</span>
+            <span>{showInstructions ? 'Hide Guide' : 'Guide'}</span>
           </button>
         </div>
 
         {/* Live Staging Assistant Bar */}
         {isArmed && (
-          <div className="bg-black/60 border border-white/10 rounded-xl p-4 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
-              <div className="flex items-center gap-3">
-                <span className={`text-xs font-mono font-black px-2.5 py-1 rounded-lg ${
+          <div className="bg-black/60 border border-white/10 rounded-xl p-3 sm:p-4 space-y-3 min-w-0 w-full overflow-hidden">
+            <div className="flex flex-col gap-2.5 border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`text-[10px] sm:text-xs font-mono font-black px-2 py-0.5 rounded-lg shrink-0 ${
                   dynoStage === 'ARMED'
                     ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                     : dynoStage === 'TRIGGERING'
@@ -328,36 +355,36 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
                   {dynoStage}
                 </span>
 
-                <span className="text-xs font-mono text-gray-300">
+                <span className="text-[11px] sm:text-xs font-mono text-gray-300 truncate">
                   {statusDetail}
                 </span>
               </div>
 
               {/* Live Power Output */}
-              <div className="flex items-center gap-4 text-xs font-mono">
+              <div className="grid grid-cols-3 gap-2 text-xs font-mono bg-white/5 p-2 rounded-lg text-center">
                 <div>
-                  <span className="text-[9px] text-gray-500 uppercase block">LIVE POWER</span>
-                  <span className="text-emerald-400 font-black">{Math.round(liveHp)} HP</span>
+                  <span className="text-[8px] text-gray-500 uppercase block">LIVE POWER</span>
+                  <span className="text-emerald-400 font-black text-xs sm:text-sm">{Math.round(liveHp)} HP</span>
                 </div>
                 <div>
-                  <span className="text-[9px] text-gray-500 uppercase block">LIVE TORQUE</span>
-                  <span className="text-amber-400 font-black">{Math.round(liveTq)} ft-lb</span>
+                  <span className="text-[8px] text-gray-500 uppercase block">LIVE TORQUE</span>
+                  <span className="text-amber-400 font-black text-xs sm:text-sm">{Math.round(liveTq)} ft-lb</span>
                 </div>
                 <div>
-                  <span className="text-[9px] text-gray-500 uppercase block">RPM</span>
-                  <span className="text-white font-black">{telemetry?.current_engine_rpm ? Math.round(telemetry.current_engine_rpm) : 0}</span>
+                  <span className="text-[8px] text-gray-500 uppercase block">LIVE RPM</span>
+                  <span className="text-white font-black text-xs sm:text-sm">{telemetry?.current_engine_rpm ? Math.round(telemetry.current_engine_rpm) : 0}</span>
                 </div>
               </div>
             </div>
 
             {/* Tachometer Progress Bar */}
             <div className="space-y-1">
-              <div className="flex justify-between text-[10px] font-mono text-gray-400">
+              <div className="flex justify-between text-[9px] sm:text-[10px] font-mono text-gray-400">
                 <span>{telemetry?.engine_idle_rpm ? Math.round(telemetry.engine_idle_rpm) : 800} RPM</span>
                 <span className="text-emerald-400 font-bold">{telemetry?.current_engine_rpm ? Math.round(telemetry.current_engine_rpm) : 0} RPM</span>
-                <span className="text-red-400 font-bold">{telemetry?.engine_max_rpm ? Math.round(telemetry.engine_max_rpm) : 8500} REDLINE</span>
+                <span className="text-red-400 font-bold">{telemetry?.engine_max_rpm ? Math.round(telemetry.engine_max_rpm) : 8500} MAX</span>
               </div>
-              <div className="w-full h-3 bg-black rounded-full overflow-hidden border border-white/10">
+              <div className="w-full h-2.5 sm:h-3 bg-black rounded-full overflow-hidden border border-white/10">
                 <div 
                   className={`h-full transition-all duration-75 ${
                     stageProgress > 90 ? 'bg-red-500 animate-pulse' : stageProgress > 70 ? 'bg-amber-400' : 'bg-emerald-400'
@@ -370,10 +397,10 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
         )}
 
         {showInstructions && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-mono">
-            <div className="bg-black/40 border border-white/5 rounded-xl p-3 space-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs font-mono">
+            <div className="bg-black/40 border border-white/5 rounded-xl p-2.5 space-y-1 min-w-0">
               <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[11px]">
-                <span className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px]">1</span>
+                <span className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center text-[9px]">1</span>
                 <span>Select Target Gear</span>
               </div>
               <p className="text-gray-400 text-[10px] leading-relaxed">
@@ -381,33 +408,33 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
               </p>
             </div>
 
-            <div className="bg-black/40 border border-white/5 rounded-xl p-3 space-y-1">
+            <div className="bg-black/40 border border-white/5 rounded-xl p-2.5 space-y-1 min-w-0">
               <div className="flex items-center gap-1.5 text-cyan-400 font-bold text-[11px]">
-                <span className="w-5 h-5 rounded-full bg-cyan-500/20 flex items-center justify-center text-[10px]">2</span>
+                <span className="w-4 h-4 rounded-full bg-cyan-500/20 flex items-center justify-center text-[9px]">2</span>
                 <span>Stage at Low RPM</span>
               </div>
               <p className="text-gray-400 text-[10px] leading-relaxed">
-                Find flat asphalt (Horizon Festival Dragstrip or Highway). Cruise in target gear at <strong>2,000–2,500 RPM</strong>.
+                Find flat asphalt (Dragstrip or Highway). Cruise in target gear at <strong>2,000–2,500 RPM</strong>.
               </p>
             </div>
 
-            <div className="bg-black/40 border border-white/5 rounded-xl p-3 space-y-1">
+            <div className="bg-black/40 border border-white/5 rounded-xl p-2.5 space-y-1 min-w-0">
               <div className="flex items-center gap-1.5 text-amber-400 font-bold text-[11px]">
-                <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">3</span>
+                <span className="w-4 h-4 rounded-full bg-amber-500/20 flex items-center justify-center text-[9px]">3</span>
                 <span>Floor Throttle (WOT)</span>
               </div>
               <p className="text-gray-400 text-[10px] leading-relaxed">
-                Press <strong>START DYNO RUN</strong> and floor the throttle (100%). The pull triggers automatically.
+                Floor the throttle (100%). The pull triggers automatically after 0.25s sustained WOT.
               </p>
             </div>
 
-            <div className="bg-black/40 border border-white/5 rounded-xl p-3 space-y-1">
+            <div className="bg-black/40 border border-white/5 rounded-xl p-2.5 space-y-1 min-w-0">
               <div className="flex items-center gap-1.5 text-rose-400 font-bold text-[11px]">
-                <span className="w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center text-[10px]">4</span>
+                <span className="w-4 h-4 rounded-full bg-rose-500/20 flex items-center justify-center text-[9px]">4</span>
                 <span>Hold to Redline</span>
               </div>
               <p className="text-gray-400 text-[10px] leading-relaxed">
-                Hold full throttle until you hit the rev limiter. Lift off to automatically finish and plot the curves!
+                Hold full throttle until the rev limiter. Lift off to automatically finish and plot the curves!
               </p>
             </div>
           </div>
@@ -479,13 +506,13 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
 
       {/* Active Dyno Run Analysis */}
       {activeRun && (
-        <div className="space-y-4">
+        <div className="space-y-3 sm:space-y-4 min-w-0 w-full">
           {/* KPI Summary Tiles */}
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
-            <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">VEHICLE</span>
-                <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 min-w-0 w-full">
+            <Card className="p-2.5 sm:p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between min-w-0">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[9px] font-mono font-bold text-gray-500 uppercase truncate">VEHICLE</span>
+                <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ${
                   activeRun.quality === 'FULL'
                     ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                     : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
@@ -496,46 +523,46 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
               <div className="text-xs font-mono font-bold text-white truncate mt-1">
                 {activeRun.vehicle.name}
               </div>
-              <div className="flex items-center gap-1 mt-1">
-                <Badge carClass={activeRun.vehicle.class} className="text-[9px]">
+              <div className="flex items-center gap-1 mt-1 truncate">
+                <Badge carClass={activeRun.vehicle.class} className="text-[9px] shrink-0">
                   {activeRun.vehicle.class} {activeRun.vehicle.pi}
                 </Badge>
-                <span className="text-[9px] font-mono text-gray-400">
+                <span className="text-[9px] font-mono text-gray-400 truncate">
                   {activeRun.summary.observedMaxRpm} MAX RPM
                 </span>
               </div>
             </Card>
 
-            <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
+            <Card className="p-2.5 sm:p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between min-w-0">
               <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">PEAK POWER</span>
               <div className="text-sm sm:text-base font-mono font-black text-emerald-400 mt-1">
                 {activeRun.summary.peakHp} <span className="text-[10px] text-gray-500 font-normal">HP</span>
               </div>
-              <span className="text-[9px] font-mono text-gray-500">@{activeRun.summary.peakHpRpm} RPM</span>
+              <span className="text-[9px] font-mono text-gray-500 truncate">@{activeRun.summary.peakHpRpm} RPM</span>
             </Card>
 
-            <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
+            <Card className="p-2.5 sm:p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between min-w-0">
               <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">PEAK TORQUE</span>
               <div className="text-sm sm:text-base font-mono font-black text-amber-400 mt-1">
                 {activeRun.summary.peakTorqueFtLb} <span className="text-[10px] text-gray-500 font-normal">ft-lb</span>
               </div>
-              <span className="text-[9px] font-mono text-gray-500">@{activeRun.summary.peakTorqueRpm} RPM</span>
+              <span className="text-[9px] font-mono text-gray-500 truncate">@{activeRun.summary.peakTorqueRpm} RPM</span>
             </Card>
 
-            <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
+            <Card className="p-2.5 sm:p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between min-w-0">
               <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">85% POWER BAND</span>
               <div className="text-xs sm:text-sm font-mono font-black text-cyan-400 mt-1">
                 {activeRun.summary.powerBandStartRpm}–{activeRun.summary.powerBandEndRpm}
               </div>
-              <span className="text-[9px] font-mono text-gray-500">Width: {activeRun.summary.powerBandWidth} RPM</span>
+              <span className="text-[9px] font-mono text-gray-500 truncate">Width: {activeRun.summary.powerBandWidth} RPM</span>
             </Card>
 
-            <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
+            <Card className="p-2.5 sm:p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between min-w-0">
               <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">OPTIMAL SHIFT</span>
               <div className="text-sm sm:text-base font-mono font-black text-rose-400 mt-1">
                 {activeRun.summary.optimalShiftRpm} <span className="text-[10px] text-gray-500 font-normal">RPM</span>
               </div>
-              <span className="text-[9px] font-mono text-gray-500">
+              <span className="text-[9px] font-mono text-gray-500 truncate">
                 {activeRun.summary.peakBoostPsi > 0 
                   ? `Peak Boost: ${convertPressure(activeRun.summary.peakBoostPsi).value} ${convertPressure(activeRun.summary.peakBoostPsi).label}` 
                   : 'Naturally Aspirated'}
@@ -543,13 +570,13 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
             </Card>
 
             {/* AI Prompt & Export Actions */}
-            <Card className="p-2.5 bg-gradient-to-br from-[#121220] to-[#0c0c14] border-white/10 flex flex-col justify-between gap-1.5">
+            <Card className="p-2.5 bg-gradient-to-br from-[#121220] to-[#0c0c14] border-white/10 flex flex-col justify-between gap-1.5 min-w-0">
               <button
                 onClick={copyAiPrompt}
                 className="w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-[10px] font-mono font-bold transition-all cursor-pointer"
               >
                 {copiedPrompt ? <Check size={12} className="text-emerald-400" /> : <Sparkles size={12} />}
-                <span>{copiedPrompt ? 'Copied Dyno Prompt' : 'AI Tuning Coach'}</span>
+                <span className="truncate">{copiedPrompt ? 'Copied Dyno Prompt' : 'AI Tuning Coach'}</span>
               </button>
 
               <button
@@ -557,22 +584,22 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
                 className="w-full flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono font-bold transition-all cursor-pointer"
               >
                 <Download size={12} />
-                <span>Export Dyno JSON</span>
+                <span className="truncate">Export Dyno JSON</span>
               </button>
             </Card>
           </div>
 
           {/* Dyno Graph 1: Classic Single-Gear Dyno Chart (HP & Torque vs RPM) */}
-          <Card className="p-4 bg-[#0e0e16] border-white/10 space-y-3">
-            <div className="flex items-center justify-between">
+          <Card className="p-3 sm:p-4 bg-[#0e0e16] border-white/10 space-y-3 min-w-0 overflow-hidden w-full">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
               <div className="flex items-center gap-2">
-                <Flame size={16} className="text-amber-400" />
+                <Flame size={16} className="text-amber-400 shrink-0" />
                 <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
                   Chassis Dyno Power Curve (HP &amp; Torque vs RPM)
                 </h3>
               </div>
-              <div className="flex items-center gap-3 text-[10px] font-mono font-bold">
-                <span className="text-emerald-400">● Horsepower (HP)</span>
+              <div className="flex items-center gap-2.5 text-[10px] font-mono font-bold flex-wrap">
+                <span className="text-emerald-400">● HP</span>
                 <span className="text-amber-400">● Torque (ft-lb)</span>
                 {activeRun.summary.peakBoostPsi > 0 && (
                   <span className="text-cyan-400">● Boost ({units.pressure.toUpperCase()})</span>
@@ -580,9 +607,9 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
               </div>
             </div>
 
-            <div className="h-64 sm:h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={activeRun.rpmCurve}>
+            <div className="h-60 sm:h-72 w-full min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <ComposedChart data={activeRun.rpmCurve} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
                   <XAxis dataKey="rpm" stroke="#6b7280" fontSize={10} tickFormatter={(v) => `${v}`} />
                   <YAxis yAxisId="power" stroke="#10b981" fontSize={10} domain={[0, 'auto']} />
@@ -593,7 +620,7 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
                     contentStyle={{ backgroundColor: '#0a0a10', borderColor: '#ffffff20', borderRadius: '8px', fontSize: '11px', fontFamily: 'monospace' }} 
                   />
                   {/* 5,252 RPM Crossover Reference Line */}
-                  <ReferenceLine yAxisId="power" x={5252} stroke="#ffffff40" strokeDasharray="3 3" label={{ value: '5252 RPM (HP=TQ)', fill: '#9ca3af', fontSize: 10, position: 'insideTopLeft' }} />
+                  <ReferenceLine yAxisId="power" x={5252} stroke="#ffffff40" strokeDasharray="3 3" label={{ value: '5252 RPM', fill: '#9ca3af', fontSize: 10, position: 'insideTopLeft' }} />
                   <Line yAxisId="power" type="monotone" dataKey="hp" stroke="#10b981" strokeWidth={2.5} dot={false} isAnimationActive={false} name="Horsepower (HP)" />
                   <Line yAxisId="power" type="monotone" dataKey="torqueFtLb" stroke="#f59e0b" strokeWidth={2.5} dot={false} isAnimationActive={false} name="Torque (ft-lb)" />
                   {activeRun.summary.peakBoostPsi > 0 && (
@@ -606,46 +633,76 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
 
           {/* Dyno Graph 2 & Gearing Optimizer: Multi-Gear Thrust & Shift Points */}
           {activeRun.mode === 'multi_gear' && Object.keys(activeRun.perGearCurves).length > 1 && (
-            <Card className="p-4 bg-[#0e0e16] border-white/10 space-y-3">
-              <div className="flex items-center justify-between">
+            <Card className="p-3 sm:p-4 bg-[#0e0e16] border-white/10 space-y-3 min-w-0 overflow-hidden w-full">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                 <div className="flex items-center gap-2">
-                  <Gauge size={16} className="text-cyan-400" />
+                  <Gauge size={16} className="text-cyan-400 shrink-0" />
                   <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
                     Multi-Gear Thrust Curves &amp; Upshift Points (vs Speed)
                   </h3>
                 </div>
-                <div className="flex items-center gap-2 text-[9px] font-mono font-bold">
+                <div className="flex items-center gap-2 text-[9px] font-mono font-bold flex-wrap">
                   {Object.keys(activeRun.perGearCurves).map((g) => (
                     <span key={g} style={{ color: GEAR_COLORS[(parseInt(g, 10) - 1) % GEAR_COLORS.length] }}>
-                      Gear {g}
+                      ● Gear {g} Power
                     </span>
                   ))}
                 </div>
               </div>
 
+              {/* Multi-Gear Speed Chart */}
+              {multiGearChartData.length > 0 && (
+                <div className="h-60 sm:h-72 w-full min-w-0">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                    <ComposedChart data={multiGearChartData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
+                      <XAxis dataKey="speed" stroke="#6b7280" fontSize={10} unit={` ${units.speed.toUpperCase()}`} />
+                      <YAxis stroke="#10b981" fontSize={10} domain={[0, 'auto']} />
+                      <Tooltip contentStyle={{ backgroundColor: '#0a0a10', borderColor: '#ffffff20', borderRadius: '8px', fontSize: '11px', fontFamily: 'monospace' }} />
+                      {Object.keys(activeRun.perGearCurves).map(Number).sort((a, b) => a - b).map((g) => (
+                        <Line
+                          key={`gear_${g}`}
+                          type="monotone"
+                          dataKey={`gear_${g}_hp`}
+                          stroke={GEAR_COLORS[(g - 1) % GEAR_COLORS.length]}
+                          strokeWidth={2.5}
+                          dot={false}
+                          isAnimationActive={false}
+                          name={`Gear ${g} Power (HP)`}
+                          connectNulls={true}
+                        />
+                      ))}
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
               {/* Shift Points Recommendation Table */}
               {activeRun.shiftPoints.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1 pb-2">
-                  {activeRun.shiftPoints.map((sp, idx) => (
-                    <div key={idx} className="bg-black/40 border border-white/5 rounded-lg p-2.5 text-xs font-mono space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-emerald-400 font-bold flex items-center gap-1">
-                          Gear {sp.fromGear} <ArrowRight size={12} /> Gear {sp.toGear}
-                        </span>
-                        <span className="text-white font-black">{sp.shiftSpeedMph} MPH</span>
+                <div className="space-y-1.5 pt-1 border-t border-white/5">
+                  <div className="text-[10px] font-mono font-bold text-gray-400 uppercase">Recommended Shift Windows</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {activeRun.shiftPoints.map((sp, idx) => (
+                      <div key={idx} className="bg-black/40 border border-white/5 rounded-lg p-2.5 text-xs font-mono space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-emerald-400 font-bold flex items-center gap-1">
+                            Gear {sp.fromGear} <ArrowRight size={12} /> Gear {sp.toGear}
+                          </span>
+                          <span className="text-white font-black">{sp.shiftSpeedMph} MPH</span>
+                        </div>
+                        <div className="text-[10px] text-gray-400">
+                          Shift @ <strong className="text-rose-400">{sp.shiftRpm} RPM</strong> ➔ Lands at <strong className="text-cyan-300">{sp.dropRpm} RPM</strong>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-gray-400">
-                        Shift @ <strong className="text-rose-400">{sp.shiftRpm} RPM</strong> ➔ Lands at <strong className="text-cyan-300">{sp.dropRpm} RPM</strong>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
             </Card>
           )}
 
           {/* AI Dyno Tuning Coach Card */}
-          <Card className="p-4 sm:p-5 bg-gradient-to-br from-[#121222] via-[#0e0e18] to-[#0a0a10] border-emerald-500/30 space-y-4">
+          <Card className="p-3 sm:p-5 bg-gradient-to-br from-[#121222] via-[#0e0e18] to-[#0a0a10] border-emerald-500/30 space-y-4 min-w-0 overflow-hidden w-full">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">

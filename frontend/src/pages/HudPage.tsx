@@ -84,7 +84,7 @@ export function HudPage() {
       {/* ========================================================================= */}
       {/* 1. VERTICAL PORTRAIT MODE: Clean Single-Screen Cockpit Layout             */}
       {/* ========================================================================= */}
-      <div className="block landscape:hidden p-2.5 sm:p-3 space-y-2.5 pb-28 overflow-y-auto">
+      <div className="block landscape:hidden p-2 space-y-2 pb-20 overflow-y-auto max-w-lg mx-auto min-w-0 w-full">
         {/* Car & Connection Status Bar */}
         <CarInfo 
           carOrdinal={data.car_ordinal}
@@ -129,60 +129,68 @@ export function HudPage() {
           connected={connected} 
         />
 
-        {/* Tire Thermals + Integrated Central Lap Timing Module */}
-        <TireTemps 
-          fl={data.tire_temp_fl} fr={data.tire_temp_fr} 
-          rl={data.tire_temp_rl} rr={data.tire_temp_rr} 
-          slipFl={data.tire_slip_fl} slipFr={data.tire_slip_fr}
-          slipRl={data.tire_slip_rl} slipRr={data.tire_slip_rr}
-          slipAngleFl={data.slip_angle_fl} slipAngleFr={data.slip_angle_fr}
-          slipAngleRl={data.slip_angle_rl} slipAngleRr={data.slip_angle_rr}
-          suspFl={data.susp_fl} suspFr={data.susp_fr}
-          suspRl={data.susp_rl} suspRr={data.susp_rr}
-          currentLap={data.current_lap}
-          bestLap={data.best_lap}
-          lastLap={data.last_lap}
-          lapNumber={data.lap_number}
-        />
+        {/* 2-Column Core Telemetry Matrix: All 4 Sub-Gauges Visible on Single Screen */}
+        <div className="grid grid-cols-2 gap-2 min-w-0 w-full">
+          {/* Top-Left: Tires & Lap Timer */}
+          <div className="min-w-0 h-full">
+            <TireTemps 
+              fl={data.tire_temp_fl} fr={data.tire_temp_fr} 
+              rl={data.tire_temp_rl} rr={data.tire_temp_rr} 
+              slipFl={data.tire_slip_fl} slipFr={data.tire_slip_fr}
+              slipRl={data.tire_slip_rl} slipRr={data.tire_slip_rr}
+              slipAngleFl={data.slip_angle_fl} slipAngleFr={data.slip_angle_fr}
+              slipAngleRl={data.slip_angle_rl} slipAngleRr={data.slip_angle_rr}
+              suspFl={data.susp_fl} suspFr={data.susp_fr}
+              suspRl={data.susp_rl} suspRr={data.susp_rr}
+              currentLap={data.current_lap}
+              bestLap={data.best_lap}
+              lastLap={data.last_lap}
+              lapNumber={data.lap_number}
+            />
+          </div>
 
-        {/* Chassis Balance, Understeer/Oversteer & Traction Utilization */}
-        <TractionDynamics
-          slipAngleFl={data.slip_angle_fl}
-          slipAngleFr={data.slip_angle_fr}
-          slipAngleRl={data.slip_angle_rl}
-          slipAngleRr={data.slip_angle_rr}
-          slipRatioFl={data.slip_ratio_fl}
-          slipRatioFr={data.slip_ratio_fr}
-          slipRatioRl={data.slip_ratio_rl}
-          slipRatioRr={data.slip_ratio_rr}
-          tireTempFl={data.tire_temp_fl}
-          tireTempFr={data.tire_temp_fr}
-          tireTempRl={data.tire_temp_rl}
-          tireTempRr={data.tire_temp_rr}
-          accelX={data.acceleration_x}
-          accelZ={data.acceleration_z}
-          throttle={data.accel}
-          brake={data.brake}
-          suspFl={data.susp_fl}
-          suspFr={data.susp_fr}
-          suspRl={data.susp_rl}
-          suspRr={data.susp_rr}
-        />
+          {/* Top-Right: G-Force Friction Circle */}
+          <div className="min-w-0 h-full">
+            <GForceCircle 
+              accelX={data.acceleration_x} 
+              accelZ={data.acceleration_z} 
+              slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
+            />
+          </div>
 
-        {/* Dynamic Telemetry Duo: G-Force Friction Circle + Boost / Vacuum Gauge */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <GForceCircle 
-            accelX={data.acceleration_x} 
-            accelZ={data.acceleration_z} 
-            slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
-          />
-          <BoostGauge 
-            boostPsi={data.boost_psi}
-          />
+          {/* Bottom-Left: Chassis Balance & Dynamic Traction */}
+          <div className="min-w-0 h-full">
+            <TractionDynamics
+              slipAngleFl={data.slip_angle_fl}
+              slipAngleFr={data.slip_angle_fr}
+              slipAngleRl={data.slip_angle_rl}
+              slipAngleRr={data.slip_angle_rr}
+              slipRatioFl={data.slip_ratio_fl}
+              slipRatioFr={data.slip_ratio_fr}
+              slipRatioRl={data.slip_ratio_rl}
+              slipRatioRr={data.slip_ratio_rr}
+              tireTempFl={data.tire_temp_fl}
+              tireTempFr={data.tire_temp_fr}
+              tireTempRl={data.tire_temp_rl}
+              tireTempRr={data.tire_temp_rr}
+              accelX={data.acceleration_x}
+              accelZ={data.acceleration_z}
+              throttle={data.accel}
+              brake={data.brake}
+              suspFl={data.susp_fl}
+              suspFr={data.susp_fr}
+              suspRl={data.susp_rl}
+              suspRr={data.susp_rr}
+            />
+          </div>
+
+          {/* Bottom-Right: Analog/Digital Boost Gauge */}
+          <div className="min-w-0 h-full">
+            <BoostGauge 
+              boostPsi={data.boost_psi}
+            />
+          </div>
         </div>
-
-        {/* Bottom Nav Clearance Buffer */}
-        <div className="h-6 pointer-events-none" />
       </div>
 
       {/* ========================================================================= */}

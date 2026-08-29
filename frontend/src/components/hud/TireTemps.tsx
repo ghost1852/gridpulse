@@ -88,12 +88,14 @@ export function TireTemps({
     const isSliding = slip > 0.8;
     const suspCompressionPct = Math.min(100, Math.max(0, (1.0 - susp) * 100));
     const converted = convertTemp(temp);
-
     return (
       <div 
+        role="button"
+        tabIndex={0}
+        onPointerDown={() => setInspectedCorner(corner)}
         onClick={() => setInspectedCorner(corner)}
         className={cn(
-          "flex items-center gap-1.5 cursor-pointer group active:scale-95 transition-transform", 
+          "flex items-center gap-1.5 cursor-pointer group active:scale-95 transition-transform select-none touch-manipulation", 
           isLeft ? "flex-row" : "flex-row-reverse"
         )}
       >
