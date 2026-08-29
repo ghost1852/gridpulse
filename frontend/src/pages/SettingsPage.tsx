@@ -652,8 +652,65 @@ export function SettingsPage() {
         </div>
       </Card>
 
+      {/* About & Technical Specifications Card */}
+      <Card className="p-4 sm:p-5 space-y-4 bg-gradient-to-br from-[#12121e] via-[#0d0d16] to-[#0a0a0f] border-white/10">
+        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_10px_#00ff88]" />
+            <h2 className="text-base font-mono font-black text-white tracking-wider uppercase">
+              About GridPulse
+            </h2>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
+            v2.2.0 RELEASE
+          </span>
+        </div>
+
+        <div className="space-y-3 font-mono text-xs text-gray-300">
+          <p className="leading-relaxed">
+            <strong className="text-white">GridPulse</strong> is an open-source, high-frequency motorsport telemetry instrument, chassis dyno, and live race engineering suite designed specifically for <strong className="text-emerald-400">Forza Horizon 6, Forza Horizon 5, FH4, and Forza Motorsport</strong>.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+              <span className="text-[10px] font-bold uppercase text-cyan-400 block">⚡ Low-Jitter Telemetry Pipeline</span>
+              <p className="text-[11px] text-gray-400">
+                Direct UDP ingestion (324-byte Dash protocol) with instantaneous WebSockets on LAN and end-to-end encrypted WebRTC DataChannels for remote P2P.
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+              <span className="text-[10px] font-bold uppercase text-amber-400 block">📊 Virtual Chassis Dyno &amp; Thrust Lab</span>
+              <p className="text-[11px] text-gray-400">
+                WOT pull engine with 100-RPM binning, 5,252 RPM crossover verification, multi-gear thrust slices, and transmission shift point recommendations.
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+              <span className="text-[10px] font-bold uppercase text-pink-400 block">💨 Session System &amp; Impact Engine</span>
+              <p className="text-[11px] text-gray-400">
+                Auto-classifies Drift, Time Attack, Circuit, Sprint, and Off-Road stints, with physics-based wall/barrier collision detection and peak G-force logging.
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 space-y-1">
+              <span className="text-[10px] font-bold uppercase text-emerald-400 block">🔒 100% Local-First &amp; Private</span>
+              <p className="text-[11px] text-gray-400">
+                All stint records, dyno runs, and vehicle setups are persisted in your browser's IndexedDB. Zero telemetry bytes are ever uploaded or relayed to cloud servers.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500">
+            <span>660-Car Offline Identification Database</span>
+            <span>Sub-2ms Local Frame Transmission</span>
+            <span>MIT License</span>
+          </div>
+        </div>
+      </Card>
+
       <div className="text-center text-[11px] text-gray-600 font-mono pt-2">
-        GridPulse &copy; 2026 • Forza Horizon 4 / 5 / 6 &amp; Motorsport Telemetry Suite
+        GridPulse &copy; 2026 • Engineered for Sim-Racers &amp; Vehicle Dynamicists
       </div>
     </div>
   );

@@ -214,6 +214,28 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               </p>
             </Card>
 
+            {/* Virtual Chassis Dyno & Multi-Gear Thrust Lab */}
+            <Card className="p-4 bg-[#101018] border-white/10 space-y-2">
+              <div className="flex items-center gap-2 text-yellow-400">
+                <Radio size={18} />
+                <h3 className="text-sm font-black text-white uppercase">Virtual Chassis Dyno &amp; Thrust Lab</h3>
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Automated WOT pull assistant with 100-RPM binning, 5,252 RPM crossover verification, multi-gear power thrust slices, and transmission shift point recommendations.
+              </p>
+            </Card>
+
+            {/* Session Type System & Impact Logger */}
+            <Card className="p-4 bg-[#101018] border-white/10 space-y-2">
+              <div className="flex items-center gap-2 text-pink-400">
+                <Activity size={18} />
+                <h3 className="text-sm font-black text-white uppercase">Session Modes &amp; Impact Logger</h3>
+              </div>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                Intelligent auto-detection for Drift, Time Attack, Circuit, Sprint, and Off-Road stints, with physics-based wall/barrier collision detection recording peak impact G-forces.
+              </p>
+            </Card>
+
             {/* Telemetry-Driven Mechanical Tuning Advisor */}
             <Card className="p-4 bg-[#101018] border-white/10 space-y-2">
               <div className="flex items-center gap-2 text-purple-400">

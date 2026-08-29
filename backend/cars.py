@@ -1,9 +1,18 @@
 import json
+import sys
 from pathlib import Path
 from typing import Optional, Union, Any
 
-# Load static dataset
-_DATA_PATH = Path(__file__).parent / "data" / "forzaHorizon6Cars.json"
+# Load static dataset (handles both development and PyInstaller bundled binaries)
+if getattr(sys, 'frozen', False):
+    meipass = getattr(sys, '_MEIPASS', None)
+    if meipass and (Path(meipass) / "data" / "forzaHorizon6Cars.json").exists():
+        _DATA_PATH = Path(meipass) / "data" / "forzaHorizon6Cars.json"
+    else:
+        _DATA_PATH = Path(sys.executable).parent / "data" / "forzaHorizon6Cars.json"
+else:
+    _DATA_PATH = Path(__file__).parent / "data" / "forzaHorizon6Cars.json"
+
 _FORZA_CARS: dict = {}
 
 if _DATA_PATH.exists():

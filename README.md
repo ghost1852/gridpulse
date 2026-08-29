@@ -98,7 +98,17 @@ Scan either QR code with your phone camera, tap **Add to Home Screen** on iOS Sa
 * Concrete setup advisories (`▼ Lower Front Pressure by 1–2 PSI`, `▼ Soften Front ARB`, `▲ Stiffen Springs / Raise Height` if bottoming out).
 * Vehicle build calibration controls (Tire Compound, Tuning Goal, Aero Package) with a 1-click **Copy Setup Guide** checklist.
 
-### 🏁 5. Precision Drag Strip & Time Attack
+### 📊 5. Virtual Chassis Dyno & Multi-Gear Thrust Lab
+* **Live WOT Pull Assistant**: Automated staging tachometer guiding the driver through single-gear pulls (IDLE ➔ STAGING ➔ FULL THROTTLE ➔ REDLINE ➔ COOLDOWN).
+* **High-Precision Dyno Curves**: 100-RPM binning with 3-point polynomial smoothing, peak power / torque tracking, and mathematical 5,252 RPM crossover verification ($HP = \frac{TQ \times RPM}{5252}$).
+* **Multi-Gear Thrust Sweeps**: Per-gear speed thrust slices, 85% peak power band width analysis, and optimal transmission upshift RPM recommendations.
+
+### 💨 6. Intelligent Session Mode System & Impact Logger
+* **Auto-Detected Session Profiles**: Classifies driving stints into `DRIFT` (slip angle, time-in-slide, rear tire thermal buildup °F/s, transition counters), `TIME_ATTACK` / `CIRCUIT` (delta to best, lap consistency score %, thermal balance), `SPRINT` (launch wheelspin time, 1/4-mile ET & trap), and `OFFROAD` (jump airtime, landing G forces, bottoming frequency).
+* **Physics-Based Wall / Barrier Impact Detection**: Automatically flags external collisions ($G \ge 4.2\text{G}$ or rapid deceleration with $<50\%$ brake), logging impact speed, speed lost, and peak impact G-force.
+* **1-Click AI Race Coach Prompt**: Instant export formatted for Claude / ChatGPT / Gemini to diagnose driving technique and chassis balance bottlenecks.
+
+### 🏁 7. Precision Drag Strip & Time Attack
 * Automatic launch detection with milestone timing: 0-60 MPH, 0-100 MPH, 60-130 MPH, 1/4 Mile (trap speed + ET), and 1/2 Mile.
 * Garage fleet ranking stored in local SQLite / IndexedDB.
 
