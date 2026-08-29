@@ -24,17 +24,18 @@ _orig_send_stun = aioice.ice.StunProtocol.send_stun
 def _hooked_send_stun(self, message, addr):
     local_host = getattr(self.local_candidate, 'host', 'unknown')
     local_port = getattr(self.local_candidate, 'port', 'unknown')
-    is_physical = '192.168.88.' in str(local_host)
+    local_type = getattr(self.local_candidate, 'type', 'unknown')
+    is_physical = '192.168.88.' in str(local_host) or local_type in ['srflx', 'relay']
     if is_physical:
         tx_id = message.transaction_id.hex() if hasattr(message.transaction_id, 'hex') else str(message.transaction_id)
         if message.message_class == aioice.stun.Class.REQUEST:
             physical_stats["outbound_requests"] += 1
-            logger.info(f"📤 [PHYSICAL OUTBOUND REQUEST #{physical_stats['outbound_requests']}] {local_host}:{local_port} ➔ {addr[0]}:{addr[1]} | {message.message_method.name} {message.message_class.name} (TxID={tx_id}, {len(bytes(message))}B)")
+            logger.info(f"📤 [STUN SEND REQUEST #{physical_stats['outbound_requests']}] Local: {local_host}:{local_port} (typ {local_type}) ➔ Remote: {addr[0]}:{addr[1]} | {message.message_method.name} (TxID={tx_id}, {len(bytes(message))}B)")
         elif message.message_class == aioice.stun.Class.RESPONSE:
             physical_stats["outbound_responses"] += 1
-            logger.info(f"📤 [PHYSICAL OUTBOUND RESPONSE #{physical_stats['outbound_responses']}] {local_host}:{local_port} ➔ {addr[0]}:{addr[1]} | {message.message_method.name} {message.message_class.name} (TxID={tx_id}, {len(bytes(message))}B)")
+            logger.info(f"📤 [STUN SEND RESPONSE #{physical_stats['outbound_responses']}] Local: {local_host}:{local_port} (typ {local_type}) ➔ Remote: {addr[0]}:{addr[1]} | {message.message_method.name} (TxID={tx_id}, {len(bytes(message))}B)")
         else:
-            logger.info(f"📤 [PHYSICAL OUTBOUND STUN] {local_host}:{local_port} ➔ {addr[0]}:{addr[1]} | {message.message_method.name} {message.message_class.name} ({len(bytes(message))}B)")
+            logger.info(f"📤 [STUN SEND] Local: {local_host}:{local_port} (typ {local_type}) ➔ Remote: {addr[0]}:{addr[1]} | {message.message_method.name} {message.message_class.name} ({len(bytes(message))}B)")
     return _orig_send_stun(self, message, addr)
 aioice.ice.StunProtocol.send_stun = _hooked_send_stun
 
@@ -42,36 +43,43 @@ _orig_datagram_received = aioice.ice.StunProtocol.datagram_received
 def _hooked_datagram_received(self, data, addr):
     local_host = getattr(self.local_candidate, 'host', 'unknown')
     local_port = getattr(self.local_candidate, 'port', 'unknown')
-    is_physical = '192.168.88.' in str(local_host)
+    local_type = getattr(self.local_candidate, 'type', 'unknown')
+    is_physical = '192.168.88.' in str(local_host) or local_type in ['srflx', 'relay']
     if is_physical:
         try:
             msg = aioice.stun.parse_message(data)
             tx_id = msg.transaction_id.hex() if hasattr(msg.transaction_id, 'hex') else str(msg.transaction_id)
             if msg.message_class == aioice.stun.Class.REQUEST:
                 physical_stats["inbound_requests"] += 1
-                logger.info(f"📥 [PHYSICAL INBOUND REQUEST #{physical_stats['inbound_requests']}] From {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} | Method={msg.message_method.name} Class={msg.message_class.name} (TxID={tx_id}, {len(data)}B)")
+                logger.info(f"📥 [STUN INBOUND REQUEST #{physical_stats['inbound_requests']}] From {addr[0]}:{addr[1]} ➔ Local: {local_host}:{local_port} (typ {local_type}) | Method={msg.message_method.name} (TxID={tx_id}, {len(data)}B)")
             elif msg.message_class == aioice.stun.Class.RESPONSE:
                 physical_stats["inbound_responses"] += 1
-                logger.info(f"📥 [PHYSICAL INBOUND RESPONSE #{physical_stats['inbound_responses']}] From {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} | Method={msg.message_method.name} Class={msg.message_class.name} (TxID={tx_id}, {len(data)}B)")
+                logger.info(f"📥 [STUN INBOUND RESPONSE #{physical_stats['inbound_responses']}] From {addr[0]}:{addr[1]} ➔ Local: {local_host}:{local_port} (typ {local_type}) | Method={msg.message_method.name} (TxID={tx_id}, {len(data)}B)")
             else:
-                logger.info(f"📥 [PHYSICAL INBOUND STUN] From {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} ({len(data)}B)")
+                logger.info(f"📥 [STUN INBOUND] From {addr[0]}:{addr[1]} ➔ Local: {local_host}:{local_port} (typ {local_type}) ({len(data)}B)")
         except Exception:
-            logger.info(f"📥 [PHYSICAL NON-STUN DATAGRAM] From {addr[0]}:{addr[1]} ➔ {local_host}:{local_port} ({len(data)}B)")
+            logger.info(f"📥 [NON-STUN DATAGRAM] From {addr[0]}:{addr[1]} ➔ Local: {local_host}:{local_port} (typ {local_type}) ({len(data)}B)")
     return _orig_datagram_received(self, data, addr)
 aioice.ice.StunProtocol.datagram_received = _hooked_datagram_received
 
 _orig_check_start = aioice.ice.Connection.check_start
 async def _hooked_check_start(self, pair):
-    local_host = getattr(pair.local_candidate, 'host', 'unknown')
-    local_port = getattr(pair.local_candidate, 'port', 'unknown')
-    remote_host = getattr(pair.remote_candidate, 'host', 'unknown')
-    remote_port = getattr(pair.remote_candidate, 'port', 'unknown')
-    is_physical = '192.168.88.' in str(local_host)
+    local_cand = pair.local_candidate
+    remote_cand = pair.remote_candidate
+    local_host = getattr(local_cand, 'host', 'unknown')
+    local_port = getattr(local_cand, 'port', 'unknown')
+    local_type = getattr(local_cand, 'type', 'host')
+    remote_host = getattr(remote_cand, 'host', 'unknown')
+    remote_port = getattr(remote_cand, 'port', 'unknown')
+    remote_type = getattr(remote_cand, 'type', 'srflx')
+    
+    is_physical = '192.168.88.' in str(local_host) or local_type in ['srflx', 'relay']
     if is_physical:
-        logger.info(f"🔍 [PHYSICAL ICE CHECK START] Local: {local_host}:{local_port} ({getattr(pair.local_candidate, 'type', 'host')}) ➔ Remote: {remote_host}:{remote_port} ({getattr(pair.remote_candidate, 'type', 'srflx')})")
+        logger.info(f"🔍 [ICE CHECK START] Local: {local_host}:{local_port} (typ {local_type}) ➔ Remote: {remote_host}:{remote_port} (typ {remote_type})")
     res = await _orig_check_start(self, pair)
     if is_physical:
-        logger.info(f"🏁 [PHYSICAL ICE CHECK RESULT] Local: {local_host}:{local_port} ➔ Remote: {remote_host}:{remote_port} | Final State: {pair.state.name} | Outbound Req={physical_stats['outbound_requests']}, Inbound Resp={physical_stats['inbound_responses']}, Inbound Req={physical_stats['inbound_requests']}")
+        status_symbol = "✅ SUCCEEDED" if pair.state.name == "SUCCEEDED" else f"❌ {pair.state.name}"
+        logger.info(f"🏁 [ICE CHECK RESULT] Local: {local_host}:{local_port} (typ {local_type}) ➔ Remote: {remote_host}:{remote_port} (typ {remote_type}) | Status: {status_symbol}")
     return res
 aioice.ice.Connection.check_start = _hooked_check_start
 
@@ -131,19 +139,27 @@ class WebRtcHost:
         
         # Primary STUN servers for Direct P2P
         ice_servers = [
-            RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"])
+            RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun.relay.metered.ca:80"])
         ]
         
-        # Optional TURN relay fallback via Environment Variables
-        turn_url = turn_server or os.environ.get("GRIDPULSE_TURN_SERVER", "").strip()
-        turn_user = turn_username or os.environ.get("GRIDPULSE_TURN_USER", "").strip()
-        turn_pass = turn_password or os.environ.get("GRIDPULSE_TURN_PASS", "").strip()
+        # TURN relay fallback via credentials
+        turn_url = turn_server or os.environ.get("GRIDPULSE_TURN_SERVER", "").strip() or "turn:global.relay.metered.ca:80?transport=udp"
+        turn_user = turn_username or os.environ.get("GRIDPULSE_TURN_USER", "").strip() or "209b522bcd85f9169da1bc48"
+        turn_pass = turn_password or os.environ.get("GRIDPULSE_TURN_PASS", "").strip() or "660slSqG6ARvPTC/"
         
         if turn_url:
             logger.info(f"🌐 Configured WebRTC TURN relay fallback: {turn_url}")
             ice_servers.append(
                 RTCIceServer(
                     urls=[turn_url],
+                    username=turn_user if turn_user else None,
+                    credential=turn_pass if turn_pass else None
+                )
+            )
+            # Support TLS TCP fallback
+            ice_servers.append(
+                RTCIceServer(
+                    urls=["turns:global.relay.metered.ca:443?transport=tcp"],
                     username=turn_user if turn_user else None,
                     credential=turn_pass if turn_pass else None
                 )

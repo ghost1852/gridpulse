@@ -132,10 +132,30 @@ export class WebRtcTelemetryClient {
 
       const iceServers: RTCIceServer[] = [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun.relay.metered.ca:80' },
+        {
+          urls: 'turn:global.relay.metered.ca:80',
+          username: '209b522bcd85f9169da1bc48',
+          credential: '660slSqG6ARvPTC/'
+        },
+        {
+          urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+          username: '209b522bcd85f9169da1bc48',
+          credential: '660slSqG6ARvPTC/'
+        },
+        {
+          urls: 'turn:global.relay.metered.ca:443',
+          username: '209b522bcd85f9169da1bc48',
+          credential: '660slSqG6ARvPTC/'
+        },
+        {
+          urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+          username: '209b522bcd85f9169da1bc48',
+          credential: '660slSqG6ARvPTC/'
+        }
       ];
 
-      // Support dynamic TURN configuration via URL query params or localStorage
+      // Support dynamic custom TURN overrides via URL query params or localStorage
       try {
         if (typeof window !== 'undefined') {
           const params = new URLSearchParams(window.location.search);
@@ -144,7 +164,7 @@ export class WebRtcTelemetryClient {
           const turnPass = params.get('turn_pass') || (window as any).__GRIDPULSE_TURN_PASS__ || localStorage.getItem('gridpulse_turn_pass');
 
           if (turnUrl) {
-            this.log(`🌐 Configured WebRTC TURN relay fallback: ${turnUrl}`);
+            this.log(`🌐 Added custom WebRTC TURN relay override: ${turnUrl}`);
             iceServers.push({
               urls: turnUrl,
               username: turnUser || undefined,
