@@ -44,7 +44,7 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
         <div className="max-w-5xl mx-auto space-y-5">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-bold tracking-wider">
             <Radio size={14} className="animate-pulse text-emerald-400" />
-            <span>FORZA HORIZON 6, 5, 4 &amp; MOTORSPORT</span>
+            <span>FORZA HORIZON TELEMETRY</span>
           </div>
 
           <div className="space-y-2">
@@ -52,12 +52,11 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
               GRID<span className="text-emerald-400">PULSE</span>
             </h1>
             <p className="text-sm sm:text-lg text-gray-300 max-w-2xl font-mono leading-relaxed">
-              High-frequency WebRTC telemetry instrument, dynamic chassis balance monitor &amp; tuning advisor.
+              High-frequency telemetry instrument, virtual chassis dyno, dynamic balance monitor &amp; tuning advisor.
             </p>
           </div>
 
           {/* Quick Architectural Callout */}
-          {/* Architecture Badge */}
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 max-w-3xl text-xs font-mono text-emerald-300 flex items-start gap-2.5">
             <ShieldCheck size={18} className="text-emerald-400 shrink-0 mt-0.5" />
             <div>
