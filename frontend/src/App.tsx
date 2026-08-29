@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { HudPage } from './pages/HudPage';
+import { DynoPage } from './pages/DynoPage';
 import { RaceAnalyzePage } from './pages/RaceAnalyzePage';
 import { TuningBenchPage } from './pages/TuningBenchPage';
 import { VehicleStatsPage } from './pages/VehicleStatsPage';
@@ -7,11 +8,11 @@ import { DragStripPage } from './pages/DragStripPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LandingPage } from './pages/LandingPage';
 import { useTelemetry } from './hooks/useTelemetry';
-import { Gauge, LineChart, Wrench, Activity, Flag, Settings, Radio, BookOpen, Download } from 'lucide-react';
+import { Gauge, Zap, LineChart, Wrench, Activity, Flag, Settings, Radio, BookOpen, Download } from 'lucide-react';
 import { cn } from './lib/utils';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'hud' | 'analyze' | 'tuning' | 'stats' | 'drag' | 'guide' | 'settings'>(() => {
+  const [activeTab, setActiveTab] = useState<'hud' | 'dyno' | 'analyze' | 'tuning' | 'stats' | 'drag' | 'guide' | 'settings'>(() => {
     try {
       if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
@@ -26,6 +27,7 @@ export function App() {
 
   const tabs = [
     { id: 'hud' as const, label: 'HUD', icon: Gauge },
+    { id: 'dyno' as const, label: 'Dyno', icon: Zap },
     { id: 'analyze' as const, label: 'Analyze', icon: LineChart },
     { id: 'tuning' as const, label: 'Tuning', icon: Wrench },
     { id: 'stats' as const, label: 'Vehicle', icon: Activity },
@@ -123,6 +125,7 @@ export function App() {
         </header>
 
         {activeTab === 'hud' && <HudPage />}
+        {activeTab === 'dyno' && <DynoPage />}
         {activeTab === 'analyze' && <RaceAnalyzePage />}
         {activeTab === 'tuning' && <TuningBenchPage />}
         {activeTab === 'stats' && <VehicleStatsPage />}
