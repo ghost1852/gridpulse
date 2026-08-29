@@ -196,31 +196,46 @@ def print_terminal_banner(lan_ip: str, port: int, udp_port: int):
     clean_code = PAIRING_CODE.replace(" ", "")
     pwa_url = f"https://gridpulse.wranglr.co.za?code={clean_code}"
     lan_url = f"http://{lan_ip}:{port}"
-    print("\n" + "=" * 60)
-    print("             GRIDPULSE TELEMETRY BRIDGE v2.1")
-    print("=" * 60)
-    print(f" * Cloud Pairing URL    : {pwa_url}")
-    print(f" * LAN Dashboard URL    : {lan_url}")
+    print("\n" + "=" * 64)
+    print("             GRIDPULSE TELEMETRY BRIDGE v2.2")
+    print("=" * 64)
+    print(f" * Cloud Pairing URL     : {pwa_url}")
+    print(f" * Local LAN URL         : {lan_url}")
     print(f" * UDP Telemetry Ingress : 0.0.0.0:{udp_port}")
-    print(f" * WebRTC / WebSocket   : ACTIVE (Port {port})")
-    print(f" * Session Pairing Code : {PAIRING_CODE}")
-    print("=" * 60)
+    print(f" * WebRTC / WebSocket    : ACTIVE (Port {port})")
+    print(f" * Session Pairing Code  : {PAIRING_CODE}")
+    print("=" * 64)
     print(" FORZA IN-GAME SETUP (Settings > HUD & Gameplay > Telemetry):")
     print(f"   Data Out            : ON")
     print(f"   Data Out IP Address : 127.0.0.1 (or {lan_ip})")
     print(f"   Data Out IP Port    : {udp_port}")
-    print("=" * 60)
-    print(" SCAN WITH PHONE CAMERA TO OPEN DASHBOARD:")
-    try:
-        import qrcode
-        qr = qrcode.QRCode(box_size=1, border=1)
-        qr.add_data(pwa_url)
-        qr.print_ascii(invert=True)
-    except Exception:
-        pass
-    print(f" Open on Phone (Cloud PWA) : {pwa_url}")
-    print(f" Open on Phone (Local LAN) : {lan_url}")
-    print("=" * 60 + "\n")
+    print(f"   Data Out Format     : Car Dash")
+    print("=" * 64)
+    
+    def print_ascii_qr(data: str):
+        try:
+            import qrcode
+            qr = qrcode.QRCode(border=1)
+            qr.add_data(data)
+            qr.make(fit=True)
+            matrix = qr.get_matrix()
+            for row in matrix:
+                try:
+                    print("".join("  " if col else "██" for col in row))
+                except Exception:
+                    print("".join("  " if col else "##" for col in row))
+        except Exception as err:
+            print(f" (QR Code renderer: {err})")
+
+    print("\n [QR CODE 1] [CLOUD] PWA PAIRING (WebRTC Direct P2P):")
+    print(f" URL: {pwa_url}\n")
+    print_ascii_qr(pwa_url)
+
+    print("\n [QR CODE 2] [LOCAL] LAN DASHBOARD (Direct Wi-Fi / IP):")
+    print(f" URL: {lan_url}\n")
+    print_ascii_qr(lan_url)
+
+    print("=" * 64 + "\n")
 
 # =========================================================================
 # LIFECYCLE HOOKS

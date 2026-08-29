@@ -25,7 +25,7 @@ class EphemeralSignalingClient:
         self.webrtc_engine = webrtc_engine
         self._running = False
         self._task: Optional[asyncio.Task] = None
-        self._last_processed_time: Optional[str] = None
+        self._last_processed_id: Optional[str] = None
 
     async def start(self):
         """Starts background polling for phone SDP offers."""
@@ -33,13 +33,17 @@ class EphemeralSignalingClient:
         self._task = asyncio.create_task(self._listen_for_offers())
         logger.info(f"Ephemeral signaling active for room code: {self.clean_code}")
 
-    async def publish_answer(self, answer_dict: Dict[str, Any]) -> bool:
+    async def publish_answer(self, answer_dict: Dict[str, Any], offer_id: Optional[str] = None) -> bool:
         """Publishes the local SDP answer back to the phone."""
         url = f"{SIGNALING_URL_BASE}/dweet/for/{self.answer_thing}"
-        data = urllib.parse.urlencode({
+        payload = {
             "sdp": answer_dict.get("sdp", ""),
             "type": answer_dict.get("type", "answer")
-        }).encode("utf-8")
+        }
+        if offer_id:
+            payload["offer_id"] = offer_id
+
+        data = urllib.parse.urlencode(payload).encode("utf-8")
         
         def _post():
             req = urllib.request.Request(
@@ -54,7 +58,7 @@ class EphemeralSignalingClient:
         try:
             success = await asyncio.to_thread(_post)
             if success:
-                logger.info(f"Published SDP answer to phone for room {self.clean_code}")
+                logger.info(f"Published SDP answer (offer_id={offer_id}) to phone for room {self.clean_code}")
             return success
         except Exception as e:
             logger.warning(f"Failed to publish SDP answer: {e}")
@@ -76,13 +80,14 @@ class EphemeralSignalingClient:
                     dweet = res["with"][0]
                     created = dweet.get("created")
                     content = dweet.get("content", {})
+                    offer_id = content.get("offer_id") or created
                     
-                    if created != self._last_processed_time and content.get("type") == "offer" and content.get("sdp"):
-                        self._last_processed_time = created
-                        logger.info(f"Received phone WebRTC offer for room {self.clean_code}!")
+                    if offer_id != self._last_processed_id and content.get("type") == "offer" and content.get("sdp"):
+                        self._last_processed_id = offer_id
+                        logger.info(f"Received phone WebRTC offer (offer_id={offer_id}) for room {self.clean_code}!")
                         answer = await self.webrtc_engine.handle_offer(content["sdp"], content["type"])
                         if answer:
-                            await self.publish_answer(answer)
+                            await self.publish_answer(answer, offer_id=offer_id)
 
             except Exception as e:
                 logger.debug(f"Signaling poll tick: {e}")

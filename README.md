@@ -66,9 +66,11 @@ In **Forza Horizon 6 / 5 / 4** or **Forza Motorsport**:
    * **Data Out Packet Format**: `Car Dash` (Default 324-byte packet)
 
 ### Step 3: Scan with Phone & Mount
-1. Point your phone camera at the QR code in the bridge terminal (or open `https://gridpulse.wranglr.co.za?code=XXXXXX`).
-2. WebRTC connects directly to your PC via LAN/Wi-Fi within ~1 second.
-3. Add to Home Screen on iOS Safari or Android Chrome to run in fullscreen cockpit mode.
+The bridge prints **two QR codes** in the terminal:
+1. **QR Code 1 (Cloud PWA Pairing)**: Points to `https://gridpulse.wranglr.co.za?code=XXXXXX`. Uses ephemeral signaling to establish a direct, zero-cloud-relay WebRTC P2P DataChannel to your PC.
+2. **QR Code 2 (Local LAN Dashboard)**: Points directly to `http://<LAN-IP>:8000` on your home Wi-Fi network.
+
+Scan either QR code with your phone camera, tap **Add to Home Screen** on iOS Safari or Android Chrome to launch in fullscreen cockpit mode, and enjoy live 60-100Hz telemetry!
 
 ---
 
