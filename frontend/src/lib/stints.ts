@@ -325,6 +325,7 @@ export class StintRecorder {
   private initialDistance = 0;
   private lastDistance = 0;
   private preferredMode: SessionMode | null = null;
+  private lastTelemetry: any = null;
 
   // Real-time impact tracking variables
   private lastSpeed = 0;
@@ -375,6 +376,7 @@ export class StintRecorder {
 
   public processFrame(telemetry: any) {
     if (!this.isRecording || !telemetry) return;
+    this.lastTelemetry = telemetry;
 
     const now = Date.now();
     const elapsedSec = (now - this.startTime) / 1000;
@@ -562,8 +564,18 @@ export class StintRecorder {
     const distanceMeters = Math.max(0, this.lastDistance - this.initialDistance);
     const distanceMiles = distanceMeters * 0.000621371;
 
-    const lapsList = Array.from(this.laps.values());
-    const bestLap = lapsList.length > 0 ? Math.min(...lapsList.map(l => l.lapTime)) : 0;
+    let lapsList = Array.from(this.laps.values());
+    if (lapsList.length === 0 && totalDuration >= 5) {
+      const recordedLapTime = (this.lastTelemetry && this.lastTelemetry.current_lap > 3)
+        ? Number(this.lastTelemetry.current_lap.toFixed(3))
+        : Number(totalDuration.toFixed(3));
+      lapsList = [{
+        lapNumber: 1,
+        lapTime: recordedLapTime,
+        valid: true
+      }];
+    }
+    const bestLap = lapsList.length > 0 ? Math.min(...lapsList.map(l => l.lapTime)) : Number(totalDuration.toFixed(3));
 
     // =========================================================================
     // 4. STYLE-SPECIFIC SUMMARY CALCULATIONS
@@ -621,14 +633,14 @@ export class StintRecorder {
     // =========================================================================
     let detectedMode: SessionMode = this.preferredMode || 'FREE_ROAM';
     if (!this.preferredMode) {
-      const wheelspinEvents = this.events.filter(e => e.type === 'WHEELSPIN').length;
-      if (maxSlipRad > 0.5 || slidePct > 20 || wheelspinEvents >= 4) {
+      const avgSpeedMph = totalDuration > 0 ? (distanceMiles / (totalDuration / 3600)) : 0;
+      if (slidePct >= 45 && maxSlipRad > 0.4) {
         detectedMode = 'DRIFT';
       } else if (this.jumpCount >= 2 || this.bottomingCount >= 4) {
         detectedMode = 'OFFROAD';
       } else if (lapsList.length >= 2) {
         detectedMode = 'CIRCUIT';
-      } else if (bestLap > 0) {
+      } else if (bestLap > 0 || avgSpeedMph > 40) {
         detectedMode = 'TIME_ATTACK';
       } else if (totalDuration < 35 && this.topSpeed > 70) {
         detectedMode = 'SPRINT';

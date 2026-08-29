@@ -169,9 +169,9 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
                   <span className="text-xs font-bold text-emerald-400">STEP 3</span>
                   <QrCode size={16} className="text-gray-400" />
                 </div>
-                <h3 className="text-sm font-bold text-white uppercase">Scan &amp; Pair Phone</h3>
+                <h3 className="text-sm font-bold text-white uppercase">Scan &amp; Mount Phone</h3>
                 <p className="text-xs text-gray-400 leading-relaxed">
-                  Scan the terminal QR code with your phone camera (or open the URL with your 6-digit code). WebRTC connects direct P2P instantly!
+                  Scan the terminal QR code with your phone camera (or navigate to <span className="text-white font-bold">http://&lt;PC-IP&gt;:8000</span>). Telemetry streams at 60Hz immediately!
                 </p>
               </div>
               <div className="text-[10px] text-gray-500 bg-black/40 p-2 rounded border border-white/5">
@@ -271,15 +271,15 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             <div className="p-2.5 bg-black/40 rounded-lg border border-white/5">
               <span className="font-bold text-white block">docs/architecture.md</span>
-              <span className="text-gray-400 text-[11px]">Control plane vs data plane &amp; connection modes</span>
+              <span className="text-gray-400 text-[11px]">Local LAN vs WebSocket engine architecture</span>
             </div>
             <div className="p-2.5 bg-black/40 rounded-lg border border-white/5">
-              <span className="font-bold text-white block">docs/webrtc.md</span>
-              <span className="text-gray-400 text-[11px]">aiortc, RTCDataChannel, DTLS/SCTP specs</span>
+              <span className="font-bold text-white block">docs/dyno.md</span>
+              <span className="text-gray-400 text-[11px]">Virtual chassis dyno &amp; thrust sweep calculations</span>
             </div>
             <div className="p-2.5 bg-black/40 rounded-lg border border-white/5">
-              <span className="font-bold text-white block">docs/pairing.md</span>
-              <span className="text-gray-400 text-[11px]">6-digit session codes, QR flow &amp; single-use semantics</span>
+              <span className="font-bold text-white block">docs/tuning.md</span>
+              <span className="text-gray-400 text-[11px]">Mechanical tuning advisor &amp; alignment physics</span>
             </div>
             <div className="p-2.5 bg-black/40 rounded-lg border border-white/5">
               <span className="font-bold text-white block">docs/telemetry.md</span>
