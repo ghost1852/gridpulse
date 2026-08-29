@@ -427,22 +427,26 @@ async def websocket_endpoint(websocket: WebSocket):
 # =========================================================================
 def get_frontend_dist() -> Path:
     if getattr(sys, 'frozen', False):
-        base_dir = Path(sys.executable).parent
         meipass = getattr(sys, '_MEIPASS', None)
+        if meipass:
+            p = Path(meipass) / "frontend" / "dist"
+            if p.exists() and (p / "index.html").exists():
+                return p
+        base_dir = Path(sys.executable).parent
         candidates = [
             base_dir / "frontend" / "dist",
             base_dir / "_internal" / "frontend" / "dist",
+            base_dir.parent.parent / "frontend" / "dist",
         ]
-        if meipass:
-            candidates.insert(0, Path(meipass) / "frontend" / "dist")
         for c in candidates:
             if c.exists() and (c / "index.html").exists():
                 return c
-        return candidates[0]
+        return Path(meipass) / "frontend" / "dist" if meipass else base_dir / "frontend" / "dist"
     else:
-        return Path(__file__).parent.parent / "frontend" / "dist"
+        return Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 frontend_dist = get_frontend_dist()
+logger.info(f"Serving Static Frontend from: {frontend_dist} (index.html exists: {(frontend_dist / 'index.html').exists()})")
 
 if frontend_dist.exists() and (frontend_dist / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")
@@ -450,10 +454,16 @@ if frontend_dist.exists() and (frontend_dist / "index.html").exists():
     async def serve_spa(full_path: str):
         file_path = frontend_dist / full_path
         if file_path.exists() and file_path.is_file():
+            # Send explicit no-cache headers for sw.js and html files
+            if file_path.name in ("sw.js", "index.html", "manifest.json"):
+                return FileResponse(
+                    file_path,
+                    headers={"Cache-Control": "no-cache, no-store, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"}
+                )
             return FileResponse(file_path)
         return FileResponse(
             frontend_dist / "index.html",
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate, max-age=0", "Pragma": "no-cache", "Expires": "0"}
         )
 
 
