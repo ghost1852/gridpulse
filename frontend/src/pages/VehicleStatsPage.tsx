@@ -5,6 +5,7 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { TuningRecommendations } from '../components/hud/TuningRecommendations';
 import { getCarInfo, saveCustomCar } from '../lib/cars';
+import { copyTextToClipboard } from '../lib/clipboard';
 import { 
   Zap, 
   Flame, 
@@ -290,7 +291,7 @@ export function VehicleStatsPage() {
   };
 
   // Copy Markdown Race Engineer Debrief
-  const copyReport = (stint: StintRecord) => {
+  const copyReport = async (stint: StintRecord) => {
     const report = `**GRIDPULSE TELEMETRY STINT DEBRIEF**
 Vehicle: ${stint.carName} (${stint.carClass} ${stint.carPi})
 Time: ${stint.startTime} | Duration: ${Math.floor(stint.durationSec / 60)}m ${stint.durationSec % 60}s
@@ -301,9 +302,11 @@ Estimated Distance: ${stint.distanceMiles} Miles
 Suspension Bottom-Out Events: ${stint.bottomOuts}
 Samples Captured: ${stint.samples?.length || 0}`;
 
-    navigator.clipboard.writeText(report);
-    setCopiedId(stint.id);
-    setTimeout(() => setCopiedId(null), 2000);
+    const ok = await copyTextToClipboard(report);
+    if (ok) {
+      setCopiedId(stint.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }
   };
 
   // True Pitch and Roll in degrees

@@ -9,6 +9,18 @@ if sys.stderr is None:
 if sys.stdin is None:
     sys.stdin = open(os.devnull, "r", encoding="utf-8")
 
+# Configure console encoding for crisp UTF-8 ASCII QR code rendering
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 import asyncio
 import json
 import logging
@@ -16,6 +28,7 @@ import argparse
 import time
 import socket
 import random
+import qrcode
 from typing import Set, Dict, Any
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -203,17 +216,13 @@ def get_lan_ip() -> str:
     return ip
 
 def print_terminal_banner(lan_ip: str, port: int, udp_port: int):
-    clean_code = PAIRING_CODE.replace(" ", "")
-    pwa_url = f"https://gridpulse.wranglr.co.za?code={clean_code}"
     lan_url = f"http://{lan_ip}:{port}"
     print("\n" + "=" * 64)
     print("             GRIDPULSE TELEMETRY BRIDGE v2.2")
     print("=" * 64)
-    print(f" * Cloud Pairing URL     : {pwa_url}")
-    print(f" * Local LAN URL         : {lan_url}")
+    print(f" * Local LAN Dashboard   : {lan_url}")
     print(f" * UDP Telemetry Ingress : 0.0.0.0:{udp_port}")
-    print(f" * WebRTC / WebSocket    : ACTIVE (Port {port})")
-    print(f" * Session Pairing Code  : {PAIRING_CODE}")
+    print(f" * Local WebSocket Stream: ws://{lan_ip}:{port}/ws")
     print("=" * 64)
     print(" FORZA IN-GAME SETUP (Settings > HUD & Gameplay > Telemetry):")
     print(f"   Data Out            : ON")
@@ -237,11 +246,7 @@ def print_terminal_banner(lan_ip: str, port: int, udp_port: int):
         except Exception as err:
             print(f" (QR Code renderer: {err})")
 
-    print("\n [QR CODE 1] [CLOUD] PWA PAIRING (WebRTC Direct P2P):")
-    print(f" URL: {pwa_url}\n")
-    print_ascii_qr(pwa_url)
-
-    print("\n [QR CODE 2] [LOCAL] LAN DASHBOARD (Direct Wi-Fi / IP):")
+    print("\n [SCAN WITH PHONE TO OPEN LOCAL DASHBOARD]")
     print(f" URL: {lan_url}\n")
     print_ascii_qr(lan_url)
 

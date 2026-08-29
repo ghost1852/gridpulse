@@ -17,6 +17,7 @@ import {
   Lock
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
+import { copyTextToClipboard } from '../lib/clipboard';
 
 interface LandingPageProps {
   onOpenDashboard: () => void;
@@ -25,11 +26,13 @@ interface LandingPageProps {
 export function LandingPage({ onOpenDashboard }: LandingPageProps) {
   const [copied, setCopied] = useState(false);
 
-  const copyForzaSettings = () => {
+  const copyForzaSettings = async () => {
     const text = `Data Out: ON\nData Out IP Address: 127.0.0.1\nData Out IP Port: 20066\nData Out Packet Format: Car Dash`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (
@@ -181,14 +184,14 @@ export function LandingPage({ onOpenDashboard }: LandingPageProps) {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Direct P2P WebRTC Data Plane */}
+            {/* Direct Local LAN & WebSocket Engine */}
             <Card className="p-4 bg-[#101018] border-white/10 space-y-2">
               <div className="flex items-center gap-2 text-emerald-400">
                 <Wifi size={18} />
-                <h3 className="text-sm font-black text-white uppercase">Direct WebRTC P2P Data Plane</h3>
+                <h3 className="text-sm font-black text-white uppercase">Direct Local LAN &amp; WebSocket Engine</h3>
               </div>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Telemetry streams over an encrypted, unordered, zero-retransmission <code className="text-emerald-300">RTCDataChannel</code> directly between your PC and phone with sub-2ms local latency. Signaling shuts down once connected.
+                Telemetry streams over low-latency binary WebSockets directly between your PC and phone on your local Wi-Fi with sub-millisecond responsiveness. 100% offline, zero cloud servers required.
               </p>
             </Card>
 

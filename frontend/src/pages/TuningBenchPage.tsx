@@ -4,6 +4,7 @@ import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { getCarInfo, saveCustomCar, type CarBuild } from '../lib/cars';
 import { useUnits } from '../context/UnitContext';
+import { copyTextToClipboard } from '../lib/clipboard';
 import { 
   Wrench, 
   Sparkles, 
@@ -228,7 +229,7 @@ export function TuningBenchPage() {
     };
   }, [frontTempAvg, rearTempAvg, tempDelta, handlingDelta, isBottoming, hasRearWheelspin, hasFrontLockup, build, convertTemp, car.drivetrain]);
 
-  const copyAdvisories = () => {
+  const copyAdvisories = async () => {
     let guide = `### GridPulse Mechanical Setup Guide\n`;
     guide += `**Vehicle**: ${car.name} (${car.class} ${car.pi} - ${car.drivetrain})\n`;
     guide += `**Build**: ${build.tireCompound.toUpperCase()} Tires | ${build.tuningGoal.toUpperCase()} Goal\n\n`;
@@ -241,9 +242,11 @@ export function TuningBenchPage() {
       guide += `\n`;
     });
 
-    navigator.clipboard.writeText(guide);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyTextToClipboard(guide);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const activeList = advisories[activeCategory] || [];

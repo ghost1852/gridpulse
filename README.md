@@ -1,51 +1,45 @@
 # GridPulse — High-Frequency Telemetry Suite & Mobile Cockpit PWA
 
-> **Direct WebRTC P2P Data Plane • Zero Telemetry Relay • Sub-2ms Latency • 660-Car Database**
+> **100% Local-First LAN Architecture • Zero Cloud Dependencies • Sub-1ms Latency • 660-Car Database**
 
 GridPulse is a real-time motorsport telemetry instrument, performance analytics engine, and chassis tuning advisor engineered for **Forza Horizon 6, Forza Horizon 5, FH4, and Forza Motorsport**.
 
-It ingests high-frequency 324-byte UDP Data-Out packets streamed directly from the Forza physics engine, computes vehicle dynamics (suspension travel, 4-corner tire surface thermals, slip vectors, G-forces, and chassis balance), and streams telemetry directly to your phone, tablet, or browser over an end-to-end encrypted WebRTC DataChannel.
+It ingests high-frequency 324-byte UDP Data-Out packets streamed directly from the Forza physics engine, computes vehicle dynamics (suspension travel, 4-corner tire surface thermals, slip vectors, G-forces, boost pressure, and chassis balance), and streams telemetry directly to your phone, tablet, or browser over your local home network with sub-millisecond responsiveness.
 
 ---
 
 ## Architectural Overview
 
-GridPulse strictly separates the **Control Plane** from the **Data Plane**:
+GridPulse operates as a **100% Local LAN Telemetry Instrument**:
 
-* **Control Plane (Wranglr / Ephemeral Broker)**: Serves the client Progressive Web App (PWA) assets and coordinates the ephemeral WebRTC handshake (SDP offer/answer and ICE candidate exchange via a single-use 6-digit session code).
-* **Data Plane (Direct WebRTC P2P)**: Once connected, the control plane closes. 100% of live telemetry travels directly between the gaming PC and your phone over an encrypted, unordered `RTCDataChannel` with **zero telemetry relayed through cloud infrastructure**.
+* **Local Ingress & Bridge**: The Python bridge runs directly on your gaming PC, listening on UDP port `20066` for Forza physics packets.
+* **Integrated PWA Host & WebSocket Engine**: The bridge serves the complete high-performance Progressive Web App (PWA) directly from your PC at `http://<LAN-IP>:8000`, broadcasting live 60–100Hz telemetry frames over local WebSockets (`ws://<LAN-IP>:8000/ws`).
+* **Zero Cloud Latency**: 100% of telemetry, stint recordings, and dyno runs remain strictly on your local network and browser IndexedDB. Zero cloud accounts or external dependencies required.
 
 ```text
-                    WRANGLR
-              ┌─────────────────┐
-              │ PWA Hosting      │
-              │ Pairing          │
-              │ SDP / ICE        │
-              │ Control Plane    │
-              └────────┬────────┘
-                       │
-                  ephemeral
-                  signaling
-                       │
-              connection established
-                       │
-                       X
-                 signaling closes
-                       │
-        ╔══════════════╧══════════════╗
-        ║       DIRECT P2P DATA       ║
-        ║                             ║
-        ║  PC ═══════════════ Phone   ║
-        ║       WebRTC/DTLS           ║
-        ║       SCTP DataChannel      ║
-        ║                             ║
-        ╚═════════════════════════════╝
-                 ▲
-                 │
-          Forza UDP telemetry (20066)
+┌─────────────────────────────────────────────────────────────┐
+│                      LOCAL GAMING PC                        │
+│                                                             │
+│  [ Forza Horizon / Motorsport ]                             │
+│               │ (UDP 324-Byte Data-Out on port 20066)       │
+│               ▼                                             │
+│  [ GridPulse-Bridge.exe (Python / FastAPI / WebSockets) ]   │
+│               │ (HTTP static files + WebSocket stream)      │
+│               │ Port 8000                                   │
+└───────────────┼─────────────────────────────────────────────┘
+                │
+                │ Local Wi-Fi / LAN (< 1ms latency)
+                ▼
+┌─────────────────────────────────────────────────────────────┐
+│               MOBILE PHONE / TABLET / BROWSER               │
+│                                                             │
+│  [ GridPulse PWA Dashboard (http://<LAN-IP>:8000) ]         │
+│  - Live Digital Cockpit HUD (Speed, RPM, Boost, Tires, G)   │
+│  - Virtual Chassis Dyno & Thrust Analyzer                   │
+│  - AI Powertrain Tuning Coach & Mechanical Advisor          │
+│  - Stint Recording Engine (IndexedDB Local-First)           │
+└─────────────────────────────────────────────────────────────┘
 ```
-
-> **Product Guarantee**: GridPulse uses Wranglr for ephemeral WebRTC connection signaling. Once connected, telemetry travels directly between the user's devices over an encrypted WebRTC DataChannel. GridPulse does not relay telemetry through cloud infrastructure.
 
 ---
 

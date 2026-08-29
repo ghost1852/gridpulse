@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Card } from '../ui/Card';
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
+import { useUnits } from '../../context/UnitContext';
 import { Zap, Flame, Gauge } from 'lucide-react';
 
 interface SpeedometerProps {
@@ -35,6 +36,7 @@ export function Speedometer({
   connected = true 
 }: SpeedometerProps) {
   const [unit, setUnit] = useState<'MPH' | 'KPH'>('MPH');
+  const { convertPressure, toggleUnit } = useUnits();
   const smoothedHpRef = useRef<number>(0);
   const smoothedTorqueRef = useRef<number>(0);
 
@@ -53,7 +55,8 @@ export function Speedometer({
   const isSuperSpeed = currentSpeed > (unit === 'MPH' ? 180 : 280);
 
   // RPM percentage & shift point calculations
-  const rpmPct = Math.min(100, Math.max(0, (currentRpm / Math.max(1000, maxRpm)) * 100));
+  const safeMax = maxRpm > 0 ? maxRpm : 8500;
+  const rpmPct = Math.min(100, Math.max(0, (currentRpm / safeMax) * 100));
   const isShiftFlash = rpmPct > 93;
   const numLeds = 16;
   const activeLeds = Math.round((rpmPct / 100) * numLeds);
@@ -63,6 +66,8 @@ export function Speedometer({
   // Pedal percentages
   const throttlePct = Math.round((Math.max(0, Math.min(255, throttle)) / 255) * 100);
   const brakePct = Math.round((Math.max(0, Math.min(255, brake)) / 255) * 100);
+
+  const boostConverted = convertPressure(boostPsi);
 
   return (
     <Card className={cn(
@@ -77,14 +82,24 @@ export function Speedometer({
         )} 
       />
 
-      {/* Top Bar: 16-LED Shift Lights + Unit Switcher */}
-      <div className="w-full flex items-center justify-between gap-2 z-10 shrink-0 mb-1">
-        <div className="flex items-center gap-1">
-          <span className="text-[9px] font-mono font-bold text-gray-400">SPEED</span>
+      {/* Top Bar: Digital Live RPM + 16-LED Shift Lights + Unit Switcher */}
+      <div className="w-full flex items-center justify-between gap-1.5 sm:gap-2 z-10 shrink-0 mb-1">
+        {/* Digital Live RPM readout */}
+        <div className="flex items-baseline gap-1 shrink-0 bg-black/50 px-2 py-0.5 rounded border border-white/10">
+          <span className="text-[8px] font-mono font-bold text-gray-400">RPM</span>
+          <span className={cn(
+            "text-xs sm:text-sm font-mono font-black tracking-tight",
+            isShiftFlash ? "text-red-400 animate-pulse" : "text-white"
+          )}>
+            {Math.round(currentRpm).toLocaleString()}
+          </span>
+          <span className="text-[8px] font-mono text-gray-500 hidden sm:inline">
+            / {Math.round(safeMax).toLocaleString()}
+          </span>
         </div>
 
         {/* 16-LED Shift Light Strip */}
-        <div className="flex-1 max-w-[240px] flex items-center justify-center gap-1 bg-black/60 p-1 rounded-full border border-white/10">
+        <div className="flex-1 max-w-[220px] sm:max-w-[260px] flex items-center justify-center gap-0.5 sm:gap-1 bg-black/60 p-1 rounded-full border border-white/10">
           {Array.from({ length: numLeds }).map((_, i) => {
             const isActive = i < activeLeds;
             const isRed = i >= 12;
@@ -112,7 +127,7 @@ export function Speedometer({
         {/* Unit Toggle */}
         <button
           onClick={() => setUnit(unit === 'MPH' ? 'KPH' : 'MPH')}
-          className="px-2 py-0.5 rounded bg-black/50 border border-white/10 hover:border-emerald-400/50 text-[10px] font-mono font-bold text-gray-300 hover:text-emerald-400 transition-colors cursor-pointer"
+          className="px-2 py-0.5 rounded bg-black/50 border border-white/10 hover:border-emerald-400/50 text-[10px] font-mono font-bold text-gray-300 hover:text-emerald-400 transition-colors cursor-pointer shrink-0"
         >
           {unit} ⇄
         </button>
@@ -200,7 +215,7 @@ export function Speedometer({
 
       </div>
 
-      {/* Bottom Row: Telemetry Quick Tiles (HP, Torque, Boost, Fuel) */}
+      {/* Bottom Row: Telemetry Quick Tiles (HP, Torque, Boost with Toggle, Fuel) */}
       <div className="w-full grid grid-cols-4 gap-1 sm:gap-2 pt-1.5 border-t border-white/10 z-10 shrink-0">
         {/* HP */}
         <div className="flex flex-col items-center bg-black/40 border border-white/5 rounded p-1">
@@ -224,14 +239,18 @@ export function Speedometer({
           </span>
         </div>
 
-        {/* Boost */}
-        <div className="flex flex-col items-center bg-black/40 border border-white/5 rounded p-1">
-          <div className="flex items-center gap-0.5 text-[8px] sm:text-[9px] text-gray-400 font-mono">
-            <Gauge size={9} className="text-cyan-400" />
-            <span>BOOST</span>
+        {/* Boost (Clickable Unit Switcher) */}
+        <div 
+          onClick={() => toggleUnit('pressure')}
+          className="flex flex-col items-center bg-black/40 border border-white/5 hover:border-cyan-400/40 rounded p-1 cursor-pointer transition-colors"
+          title="Click to toggle PSI / BAR / KPA"
+        >
+          <div className="flex items-center gap-0.5 text-[8px] sm:text-[9px] text-cyan-400 font-mono">
+            <Gauge size={9} />
+            <span>{boostConverted.label}</span>
           </div>
-          <span className="text-[10px] sm:text-xs font-mono font-bold text-white">
-            {boostPsi > 0 ? `${boostPsi.toFixed(1)}` : '0.0'}
+          <span className="text-[10px] sm:text-xs font-mono font-bold text-cyan-300">
+            {boostConverted.value > 0 ? `+${boostConverted.value}` : `${boostConverted.value}`}
           </span>
         </div>
 

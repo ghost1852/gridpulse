@@ -2,57 +2,55 @@
 
 ## Overview
 
-GridPulse is a high-frequency real-time telemetry instrument and performance analytics engine for Forza Horizon 6 and Forza Motorsport.
+GridPulse is a 100% local-first, high-frequency real-time telemetry instrument and performance analytics engine for Forza Horizon 6, Forza Horizon 5, FH4, and Forza Motorsport.
 
-The core design principle of GridPulse is **Control Plane ≠ Data Plane**:
-* **Control Plane (Signaling & Pairing)**: Hosted via Wranglr / Ephemeral broker. Coordinates PWA distribution, session room discovery, and SDP/ICE candidate exchange.
-* **Data Plane (Direct High-Frequency Telemetry)**: End-to-end encrypted WebRTC `RTCDataChannel` direct P2P link between the gaming PC and the client browser/phone. **Zero telemetry bytes are ever relayed through cloud infrastructure.**
+The core design principle of GridPulse is **Local-First Zero-Cloud Architecture**:
+* **Local Ingress Engine**: Listens directly on UDP port `20066` for Forza's 324-byte binary telemetry stream.
+* **Integrated PWA Host & Fast WebSocket Server**: Runs locally on your gaming PC via FastAPI & Uvicorn, serving the complete Progressive Web App at `http://<LAN-IP>:8000` and streaming low-latency frames over `ws://<LAN-IP>:8000/ws`.
+* **Zero Cloud Relay**: Telemetry never leaves your home network. Zero external cloud servers, databases, or subscriptions required.
 
 ---
 
 ## Architectural Diagram
 
 ```text
-                    WRANGLR
-              ┌─────────────────┐
-              │ PWA Hosting      │
-              │ Pairing Broker  │
-              │ SDP / ICE        │
-              │ Control Plane    │
-              └────────┬────────┘
-                       │
-                  ephemeral
-                  signaling
-                       │
-              connection established
-                       │
-                       X
-                 signaling closes
-                       │
-        ╔══════════════╧══════════════╗
-        ║       DIRECT P2P DATA       ║
-        ║                             ║
-        ║  PC ═══════════════ Phone   ║
-        ║       WebRTC/DTLS           ║
-        ║       SCTP DataChannel      ║
-        ║                             ║
-        ╚═════════════════════════════╝
-                 ▲
-                 │
-          Forza UDP telemetry (20066)
+┌─────────────────────────────────────────────────────────────┐
+│                      LOCAL GAMING PC                        │
+│                                                             │
+│  [ Forza Horizon / Motorsport ]                             │
+│               │ (UDP 324-Byte Data-Out on port 20066)       │
+│               ▼                                             │
+│  [ GridPulse-Bridge.exe (Python / FastAPI / WebSockets) ]   │
+│               │ (HTTP static files + WebSocket stream)      │
+│               │ Port 8000                                   │
+└───────────────┼─────────────────────────────────────────────┘
+                │
+                │ Local Wi-Fi / LAN (< 1ms latency)
+                ▼
+┌─────────────────────────────────────────────────────────────┐
+│               MOBILE PHONE / TABLET / BROWSER               │
+│                                                             │
+│  [ GridPulse PWA Dashboard (http://<LAN-IP>:8000) ]         │
+│  - Live Digital Cockpit HUD (Speed, RPM, Boost, Tires, G)   │
+│  - Precision Boost / Vacuum Gauge (PSI / BAR switcher)      │
+│  - Virtual Chassis Dyno & Thrust Analyzer                   │
+│  - AI Powertrain Tuning Coach & Mechanical Advisor          │
+│  - Stint Recording Engine (IndexedDB Local-First)           │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Control Plane vs Data Plane
+## Local Architecture Specifications
 
-| Attribute | Control Plane (Wranglr / Signaling) | Data Plane (WebRTC DataChannel) |
-| :--- | :--- | :--- |
-| **Purpose** | PWA asset delivery, room pairing, SDP offer/answer exchange | High-frequency live telemetry stream & RTT measurement |
-| **Bandwidth** | Ephemeral (~2 KB one-time exchange per session) | High-frequency telemetry stream (60–100 Hz, ~30–50 KB/s) |
-| **Duration** | Active only during handshake (~1–2 seconds) | Active continuously for the entire driving session |
-| **Security** | Ephemeral single-use room topic | DTLS 1.2/1.3 end-to-end encryption & SCTP data channel |
-| **Cloud Relay** | Ephemeral signaling broker | **0 Bytes relayed through cloud** |
+| Attribute | Local LAN Engine |
+| :--- | :--- |
+| **Ingress Protocol** | UDP 324-Byte Little-Endian binary on port `20066` |
+| **Transport Protocol** | WebSocket (`ws://<LAN-IP>:8000/ws`) + Direct HTTP PWA static serving |
+| **Throughput & Frequency** | 60–100 Hz (~30–50 KB/s) continuous live physics stream |
+| **Latency** | < 1 ms on local Wi-Fi / Gigabit LAN |
+| **Data Persistence** | 100% Client-side IndexedDB (`stints`, `dyno_runs`, `custom_cars`) |
+| **Cloud Dependence** | **Zero cloud dependencies or telemetry relaying** |
 
 ---
 

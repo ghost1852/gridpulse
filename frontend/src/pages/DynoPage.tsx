@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { useTelemetry } from '../hooks/useTelemetry';
+import { useUnits } from '../context/UnitContext';
 import { getCarInfo } from '../lib/cars';
 import { 
   getAllDynoRuns, 
@@ -11,6 +12,7 @@ import {
   type DynoRun, 
   type DynoStage 
 } from '../lib/dyno';
+import { copyTextToClipboard } from '../lib/clipboard';
 import { 
   ComposedChart, 
   Line, 
@@ -25,14 +27,15 @@ import {
   Zap, 
   Download, 
   Trash2, 
-  Play, 
-  Square, 
   Check, 
   Sparkles, 
   Gauge, 
   Flame, 
   ArrowRight,
-  HelpCircle
+  HelpCircle,
+  Cpu,
+  Sliders,
+  RotateCcw
 } from 'lucide-react';
 
 const GEAR_COLORS = [
@@ -48,13 +51,16 @@ const GEAR_COLORS = [
 
 export function DynoPage() {
   const { telemetry } = useTelemetry();
+  const { convertPressure, units } = useUnits();
 
   const [dynoRuns, setDynoRuns] = useState<DynoRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'single_gear' | 'multi_gear'>('single_gear');
   const [targetGear, setTargetGear] = useState<number>(4);
-  const [isRecording, setIsRecording] = useState(false);
-  const [dynoStage, setDynoStage] = useState<DynoStage>('IDLE');
+  const [isArmed, setIsArmed] = useState(true);
+  const [autoArm, setAutoArm] = useState(true);
+  const [dynoStage, setDynoStage] = useState<DynoStage>('ARMED');
+  const [statusDetail, setStatusDetail] = useState('WAITING FOR PULL (Floor Throttle in Gear 4)');
   const [stageProgress, setStageProgress] = useState(0);
   const [liveHp, setLiveHp] = useState(0);
   const [liveTq, setLiveTq] = useState(0);
@@ -78,39 +84,57 @@ export function DynoPage() {
     refreshRuns();
   }, []);
 
-  // Process live telemetry frame into Dyno Recorder
+  // Process live telemetry frame into Auto-Arming Dyno Recorder
   useEffect(() => {
-    if (isRecording && telemetry) {
+    if (telemetry && isArmed) {
+      const car = getCarInfo(
+        telemetry.car_ordinal,
+        telemetry.car_class_name,
+        telemetry.car_performance_index,
+        telemetry.drivetrain_name
+      );
+
+      if (!globalDynoRecorder.getIsArmed()) {
+        globalDynoRecorder.arm(mode, targetGear, {
+          name: car.name,
+          ordinal: telemetry.car_ordinal,
+          class: car.class,
+          pi: car.pi,
+          drivetrain: car.drivetrain
+        });
+      }
+
       const res = globalDynoRecorder.processFrame(telemetry);
       setDynoStage(res.stage);
+      setStatusDetail(res.statusDetail);
       setStageProgress(res.progressPct);
       setLiveHp(res.currentHp);
       setLiveTq(res.currentTq);
 
-      // Auto-finish if cooldown completed
-      if (res.stage === 'COOLDOWN' && globalDynoRecorder.getSampleCount() > 30) {
-        // Auto-stop after brief cooldown buffer
+      // Auto-finish & process power curve
+      if (res.stage === 'COOLDOWN') {
         const timer = setTimeout(async () => {
-          if (globalDynoRecorder.getIsRecording()) {
-            const saved = await globalDynoRecorder.stop();
-            setIsRecording(false);
-            setDynoStage('COMPLETED');
+          const saved = await globalDynoRecorder.finishAndSave();
+          if (saved) {
             await refreshRuns();
-            if (saved) setSelectedRunId(saved.id);
+            setSelectedRunId(saved.id);
           }
-        }, 1200);
+          if (!autoArm) {
+            setIsArmed(false);
+            globalDynoRecorder.disarm();
+          }
+        }, 500);
         return () => clearTimeout(timer);
       }
     }
-  }, [telemetry, isRecording]);
+  }, [telemetry, isArmed, autoArm, mode, targetGear]);
 
-  const toggleDynoRun = async () => {
-    if (isRecording) {
-      const saved = await globalDynoRecorder.stop();
-      setIsRecording(false);
-      setDynoStage('COMPLETED');
-      await refreshRuns();
-      if (saved) setSelectedRunId(saved.id);
+  const toggleDynoArm = () => {
+    if (isArmed) {
+      globalDynoRecorder.disarm();
+      setIsArmed(false);
+      setDynoStage('DISARMED');
+      setStatusDetail('DYNO DISARMED');
     } else {
       if (!telemetry) return;
       const car = getCarInfo(
@@ -119,19 +143,15 @@ export function DynoPage() {
         telemetry.car_performance_index,
         telemetry.drivetrain_name
       );
-      globalDynoRecorder.start(
-        mode,
-        targetGear,
-        {
-          name: car.name,
-          ordinal: telemetry.car_ordinal,
-          class: car.class,
-          pi: car.pi,
-          drivetrain: car.drivetrain
-        }
-      );
-      setIsRecording(true);
-      setDynoStage('STAGING');
+      globalDynoRecorder.arm(mode, targetGear, {
+        name: car.name,
+        ordinal: telemetry.car_ordinal,
+        class: car.class,
+        pi: car.pi,
+        drivetrain: car.drivetrain
+      });
+      setIsArmed(true);
+      setDynoStage('ARMED');
     }
   };
 
@@ -151,7 +171,7 @@ export function DynoPage() {
     return dynoRuns.find(r => r.id === selectedRunId) || null;
   }, [dynoRuns, selectedRunId]);
 
-  const copyAiPrompt = () => {
+  const copyAiPrompt = async () => {
     if (!activeRun) return;
     const prompt = `### GridPulse Virtual Dyno Power & Gearing Analysis Request
 **Vehicle**: ${activeRun.vehicle.name} (${activeRun.vehicle.class} ${activeRun.vehicle.pi} - ${activeRun.vehicle.drivetrain})
@@ -160,6 +180,7 @@ export function DynoPage() {
 **Peak Torque**: ${activeRun.summary.peakTorqueFtLb} ft-lb @ ${activeRun.summary.peakTorqueRpm} RPM
 **Usable Power Band (≥85% Peak)**: ${activeRun.summary.powerBandStartRpm} – ${activeRun.summary.powerBandEndRpm} RPM (Width: ${activeRun.summary.powerBandWidth} RPM)
 **Optimal Upshift RPM**: ${activeRun.summary.optimalShiftRpm} RPM
+**Observed Redline**: ${activeRun.summary.observedMaxRpm} RPM
 **Peak Boost**: ${activeRun.summary.peakBoostPsi > 0 ? `${activeRun.summary.peakBoostPsi} PSI` : 'Naturally Aspirated'}
 
 ${activeRun.shiftPoints.length > 0 ? `**Gear Shift Recommendations**:\n${activeRun.shiftPoints.map(sp => `- Gear ${sp.fromGear} ➔ ${sp.toGear}: Shift @ ${sp.shiftSpeedMph} MPH (${sp.shiftRpm} RPM), landing at ${sp.dropRpm} RPM`).join('\n')}` : ''}
@@ -167,9 +188,11 @@ ${activeRun.shiftPoints.length > 0 ? `**Gear Shift Recommendations**:\n${activeR
 **Request**:
 Please act as an expert race engine tuner and powertrain calibration engineer. Analyze this power curve and gearing profile, evaluate whether the transmission gear ratios optimize power band retention, and suggest 3 concrete setup modifications to improve acceleration and power delivery.`;
 
-    navigator.clipboard.writeText(prompt);
-    setCopiedPrompt(true);
-    setTimeout(() => setCopiedPrompt(false), 2500);
+    const success = await copyTextToClipboard(prompt);
+    if (success) {
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 2500);
+    }
   };
 
   return (
@@ -183,11 +206,11 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
               VIRTUAL CHASSIS DYNO &amp; POWER LAB
             </h1>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-              PHYSICS ACCURATE
+              AUTO-ARMING
             </span>
           </div>
           <p className="text-xs font-mono text-gray-400 mt-1">
-            Capture wide-open-throttle power &amp; torque curves, find peak RPM thresholds, and optimize transmission shift points.
+            Hands-free pull detection. Stage in gear, floor throttle to redline, and lift/brake to record.
           </p>
         </div>
 
@@ -197,7 +220,6 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
           <div className="flex bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-mono">
             <button
               onClick={() => setMode('single_gear')}
-              disabled={isRecording}
               className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 mode === 'single_gear'
                   ? 'bg-emerald-500 text-black shadow-md shadow-emerald-500/20'
@@ -208,7 +230,6 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
             </button>
             <button
               onClick={() => setMode('multi_gear')}
-              disabled={isRecording}
               className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 mode === 'multi_gear'
                   ? 'bg-cyan-500 text-black shadow-md shadow-cyan-500/20'
@@ -226,7 +247,6 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
               <select
                 value={targetGear}
                 onChange={(e) => setTargetGear(parseInt(e.target.value, 10))}
-                disabled={isRecording}
                 className="bg-transparent text-white font-bold outline-none cursor-pointer"
               >
                 <option value={3} className="bg-[#111118]">3rd Gear</option>
@@ -237,37 +257,42 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
             </div>
           )}
 
-          {/* Record / Stop Button */}
+          {/* Auto-ReArm Toggle */}
           <button
-            onClick={toggleDynoRun}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-mono font-black tracking-wider transition-all cursor-pointer shadow-lg ${
-              isRecording
-                ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-red-500/30'
-                : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+            onClick={() => setAutoArm(!autoArm)}
+            title={autoArm ? 'Auto-ReArm: Re-arms immediately after each dyno pull' : 'Single-Run Mode: Disarms after pull'}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border ${
+              autoArm 
+                ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300' 
+                : 'bg-black/60 border-white/10 text-gray-400 hover:text-white'
             }`}
           >
-            {isRecording ? (
-              <>
-                <Square size={14} className="fill-current" />
-                <span>STOP DYNO</span>
-              </>
-            ) : (
-              <>
-                <Play size={14} className="fill-current" />
-                <span>START DYNO RUN</span>
-              </>
-            )}
+            <RotateCcw size={12} className={autoArm ? 'animate-spin-slow' : ''} />
+            <span className="text-[11px]">{autoArm ? 'AUTO-REARM: ON' : 'AUTO-REARM: OFF'}</span>
+          </button>
+
+          {/* Arm / Disarm Toggle Button */}
+          <button
+            onClick={toggleDynoArm}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-mono font-black tracking-wider transition-all cursor-pointer shadow-lg ${
+              isArmed
+                ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border border-white/10'
+            }`}
+          >
+            <Zap size={14} className={isArmed ? 'fill-current' : ''} />
+            <span>{isArmed ? 'ARMED' : 'DISARMED'}</span>
           </button>
         </div>
       </div>
 
-      {/* Step-by-Step In-App Pull Assistant (Active when Recording or Helper expanded) */}
+      {/* Live Auto-Arming Staging Banner */}
       <Card className="p-4 bg-[#0e0e16] border-white/10 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Gauge size={16} className="text-emerald-400" />
             <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-              {isRecording ? 'Live Dyno Staging Assistant' : 'How to Perform a Precision Dyno Pull'}
+              {isArmed ? 'Live Dyno Staging & Auto-Pull Detection' : 'Dyno Standby (Click ARM to Begin)'}
             </h3>
           </div>
           <button 
@@ -280,28 +305,24 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
         </div>
 
         {/* Live Staging Assistant Bar */}
-        {isRecording ? (
+        {isArmed && (
           <div className="bg-black/60 border border-white/10 rounded-xl p-4 space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
               <div className="flex items-center gap-3">
                 <span className={`text-xs font-mono font-black px-2.5 py-1 rounded-lg ${
-                  dynoStage === 'STAGING'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                  dynoStage === 'ARMED'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : dynoStage === 'TRIGGERING'
+                    ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 animate-pulse'
                     : dynoStage === 'PULLING'
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse'
                     : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
                 }`}>
-                  STAGE: {dynoStage}
+                  {dynoStage}
                 </span>
 
                 <span className="text-xs font-mono text-gray-300">
-                  {dynoStage === 'STAGING' && (
-                    mode === 'single_gear'
-                      ? `Shift to Gear ${targetGear} and cruise steadily at ~2,000–2,500 RPM on flat road.`
-                      : 'Cruise at low speed in 1st/2nd gear on flat road.'
-                  )}
-                  {dynoStage === 'PULLING' && '🔥 FLOOR THROTTLE (100% WOT) ALL THE WAY TO REDLINE!'}
-                  {dynoStage === 'COOLDOWN' && '✅ Redline reached! Lift off throttle to finish...'}
+                  {statusDetail}
                 </span>
               </div>
 
@@ -325,9 +346,9 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
             {/* Tachometer Progress Bar */}
             <div className="space-y-1">
               <div className="flex justify-between text-[10px] font-mono text-gray-400">
-                <span>800 RPM</span>
+                <span>{telemetry?.engine_idle_rpm ? Math.round(telemetry.engine_idle_rpm) : 800} RPM</span>
                 <span className="text-emerald-400 font-bold">{telemetry?.current_engine_rpm ? Math.round(telemetry.current_engine_rpm) : 0} RPM</span>
-                <span className="text-red-400 font-bold">{telemetry?.engine_max_rpm ? Math.round(telemetry.engine_max_rpm) : 8000} REDLINE</span>
+                <span className="text-red-400 font-bold">{telemetry?.engine_max_rpm ? Math.round(telemetry.engine_max_rpm) : 8500} REDLINE</span>
               </div>
               <div className="w-full h-3 bg-black rounded-full overflow-hidden border border-white/10">
                 <div 
@@ -339,7 +360,9 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
               </div>
             </div>
           </div>
-        ) : showInstructions && (
+        )}
+
+        {showInstructions && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs font-mono">
             <div className="bg-black/40 border border-white/5 rounded-xl p-3 space-y-1">
               <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-[11px]">
@@ -445,13 +468,27 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
           {/* KPI Summary Tiles */}
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
             <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
-              <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">VEHICLE</span>
+              <div className="flex items-center justify-between">
+                <span className="text-[9px] font-mono font-bold text-gray-500 uppercase">VEHICLE</span>
+                <span className={`text-[8px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                  activeRun.quality === 'FULL'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                }`}>
+                  {activeRun.quality === 'FULL' ? 'FULL PULL' : 'PARTIAL PULL'}
+                </span>
+              </div>
               <div className="text-xs font-mono font-bold text-white truncate mt-1">
                 {activeRun.vehicle.name}
               </div>
-              <Badge carClass={activeRun.vehicle.class} className="text-[9px] self-start mt-1">
-                {activeRun.vehicle.class} {activeRun.vehicle.pi}
-              </Badge>
+              <div className="flex items-center gap-1 mt-1">
+                <Badge carClass={activeRun.vehicle.class} className="text-[9px]">
+                  {activeRun.vehicle.class} {activeRun.vehicle.pi}
+                </Badge>
+                <span className="text-[9px] font-mono text-gray-400">
+                  {activeRun.summary.observedMaxRpm} MAX RPM
+                </span>
+              </div>
             </Card>
 
             <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
@@ -484,7 +521,9 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
                 {activeRun.summary.optimalShiftRpm} <span className="text-[10px] text-gray-500 font-normal">RPM</span>
               </div>
               <span className="text-[9px] font-mono text-gray-500">
-                {activeRun.summary.peakBoostPsi > 0 ? `Peak Boost: ${activeRun.summary.peakBoostPsi} PSI` : 'Naturally Aspirated'}
+                {activeRun.summary.peakBoostPsi > 0 
+                  ? `Peak Boost: ${convertPressure(activeRun.summary.peakBoostPsi).value} ${convertPressure(activeRun.summary.peakBoostPsi).label}` 
+                  : 'Naturally Aspirated'}
               </span>
             </Card>
 
@@ -520,7 +559,9 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
               <div className="flex items-center gap-3 text-[10px] font-mono font-bold">
                 <span className="text-emerald-400">● Horsepower (HP)</span>
                 <span className="text-amber-400">● Torque (ft-lb)</span>
-                {activeRun.summary.peakBoostPsi > 0 && <span className="text-cyan-400">● Boost (PSI)</span>}
+                {activeRun.summary.peakBoostPsi > 0 && (
+                  <span className="text-cyan-400">● Boost ({units.pressure.toUpperCase()})</span>
+                )}
               </div>
             </div>
 
@@ -587,6 +628,113 @@ Please act as an expert race engine tuner and powertrain calibration engineer. A
               )}
             </Card>
           )}
+
+          {/* AI Dyno Tuning Coach Card */}
+          <Card className="p-4 sm:p-5 bg-gradient-to-br from-[#121222] via-[#0e0e18] to-[#0a0a10] border-emerald-500/30 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-mono font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    AI Powertrain &amp; Gearing Tuning Coach
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
+                      AUTOMATED ANALYSIS
+                    </span>
+                  </h3>
+                  <p className="text-[11px] font-mono text-gray-400">
+                    Physics-based diagnosis of power delivery, torque plateau, and transmission gear ratio spacing.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={copyAiPrompt}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-black text-xs uppercase tracking-wider transition-all transform active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(0,255,136,0.25)] shrink-0"
+              >
+                {copiedPrompt ? <Check size={14} className="text-black" /> : <Cpu size={14} />}
+                <span>{copiedPrompt ? 'Copied to Clipboard!' : 'Copy Full AI Tuning Prompt'}</span>
+              </button>
+            </div>
+
+            {/* Diagnostics Matrix */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
+              {/* 1. Power Band Retention */}
+              <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-400">
+                  <Flame size={15} />
+                  <span className="font-bold uppercase tracking-wider">Power Band Retention</span>
+                </div>
+                <div className="text-[11px] text-gray-300 space-y-1">
+                  <p>
+                    Usable power band is <strong className="text-white">{activeRun.summary.powerBandStartRpm}–{activeRun.summary.powerBandEndRpm} RPM</strong> (Width: {activeRun.summary.powerBandWidth} RPM).
+                  </p>
+                  {activeRun.summary.peakHpRpm < activeRun.summary.maxRpm * 0.88 ? (
+                    <p className="text-amber-400 text-[10px]">
+                      ⚠️ Power peaks early ({activeRun.summary.peakHpRpm} RPM vs {activeRun.summary.maxRpm} Redline). Recommend short-shifting at {activeRun.summary.optimalShiftRpm} RPM or installing Race Camshaft/Turbo to sustain top-end power.
+                    </p>
+                  ) : (
+                    <p className="text-emerald-400 text-[10px]">
+                      ✓ High-revving power delivery: Peak power holds deep into the rev range. Full throttle up to {activeRun.summary.optimalShiftRpm} RPM.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Transmission & Gearing Spacing */}
+              <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                <div className="flex items-center gap-2 text-cyan-400">
+                  <Sliders size={15} />
+                  <span className="font-bold uppercase tracking-wider">Gear Ratio Spacing</span>
+                </div>
+                <div className="text-[11px] text-gray-300 space-y-1">
+                  {activeRun.shiftPoints.length > 0 ? (
+                    <div>
+                      <p>
+                        Estimated {activeRun.shiftPoints.length} upshift points analyzed.
+                      </p>
+                      {activeRun.shiftPoints.some(sp => sp.dropRpm < activeRun.summary.powerBandStartRpm) ? (
+                        <p className="text-amber-400 text-[10px]">
+                          ⚠️ Gear ratio gap detected: Upshift drops RPM below the {activeRun.summary.powerBandStartRpm} RPM threshold. Shorten intermediate gears (increase ratio by +0.10 to +0.20) to stay on boost.
+                        </p>
+                      ) : (
+                        <p className="text-cyan-300 text-[10px]">
+                          ✓ Tight gear spacing: All upshifts land securely inside the {activeRun.summary.powerBandStartRpm}–{activeRun.summary.powerBandEndRpm} RPM optimal thrust window.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 text-[10px]">
+                      Perform a Multi-Gear pull through gears 1➔6 to generate full transmission ratio drop analysis.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Powertrain & Traction Calibration */}
+              <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                <div className="flex items-center gap-2 text-pink-400">
+                  <Zap size={15} />
+                  <span className="font-bold uppercase tracking-wider">Traction &amp; Differential</span>
+                </div>
+                <div className="text-[11px] text-gray-300 space-y-1">
+                  <p>
+                    Torque: <strong className="text-white">{activeRun.summary.peakTorqueFtLb} ft-lb</strong> @ {activeRun.summary.peakTorqueRpm} RPM ({activeRun.vehicle.drivetrain}).
+                  </p>
+                  {activeRun.vehicle.drivetrain === 'RWD' && activeRun.summary.peakTorqueFtLb > 450 ? (
+                    <p className="text-pink-300 text-[10px]">
+                      💡 High low-end torque on RWD chassis: Lengthen 1st and 2nd gear ratios (lower ratio) or soften rear Anti-Roll Bar to prevent wheelspin on corner exit.
+                    </p>
+                  ) : (
+                    <p className="text-gray-400 text-[10px]">
+                      Linear torque delivery. Maintain standard differential acceleration lock for balanced traction.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
       )}
     </div>

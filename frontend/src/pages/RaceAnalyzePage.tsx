@@ -8,11 +8,12 @@ import {
   getAllStints, 
   deleteStint, 
   downloadStintJsonFile, 
-  importStintFromJson, 
+  importStintFromJson,
   globalStintRecorder, 
   type Stint,
   type SessionMode
 } from '../lib/stints';
+import { copyTextToClipboard } from '../lib/clipboard';
 import { 
   ComposedChart,
   LineChart, 
@@ -161,7 +162,7 @@ export function RaceAnalyzePage() {
     return raw.filter((_, i) => i % step === 0);
   }, [activeStint]);
 
-  const copyAiPrompt = () => {
+  const copyAiPrompt = async () => {
     if (!activeStint) return;
     const prompt = `### GridPulse Telemetry Stint Analysis Request
 **Vehicle**: ${activeStint.carName} (${activeStint.carClass} ${activeStint.carPi} - ${activeStint.drivetrain})
@@ -178,9 +179,11 @@ ${activeStint.events.length > 0 ? activeStint.events.map(ev => `- [Lap ${ev.lapN
 **Request**:
 Please act as an expert race engineer and driver coach. Analyze this ${activeStint.sessionMode.toLowerCase()} stint summary, identify driving technique flaws or setup bottlenecks, and provide 3 concrete actionable improvements.`;
 
-    navigator.clipboard.writeText(prompt);
-    setCopiedPrompt(true);
-    setTimeout(() => setCopiedPrompt(false), 2500);
+    const ok = await copyTextToClipboard(prompt);
+    if (ok) {
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 2500);
+    }
   };
 
   const formatLapTime = (seconds: number) => {

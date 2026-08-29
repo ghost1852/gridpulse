@@ -7,6 +7,7 @@ export interface TelemetryData {
   speed_kph: number;
   current_engine_rpm: number;
   engine_max_rpm: number;
+  engine_idle_rpm: number;
   gear: number;
   accel: number;
   brake: number;
@@ -196,6 +197,7 @@ function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
     speed_kph: speedKph,
     current_engine_rpm: typeof raw.CurrentEngineRpm === 'number' ? raw.CurrentEngineRpm : (typeof raw.current_engine_rpm === 'number' ? raw.current_engine_rpm : 0),
     engine_max_rpm: typeof raw.EngineMaxRpm === 'number' ? raw.EngineMaxRpm : (typeof raw.engine_max_rpm === 'number' ? raw.engine_max_rpm : 8500),
+    engine_idle_rpm: typeof raw.EngineIdleRpm === 'number' ? raw.EngineIdleRpm : (typeof raw.engine_idle_rpm === 'number' ? raw.engine_idle_rpm : 800),
     gear: typeof raw.Gear === 'number' ? raw.Gear : (typeof raw.gear === 'number' ? raw.gear : 0),
     accel: typeof raw.Accel === 'number' ? raw.Accel : (typeof raw.accel === 'number' ? raw.accel : 0),
     brake: typeof raw.Brake === 'number' ? raw.Brake : (typeof raw.brake === 'number' ? raw.brake : 0),
@@ -224,7 +226,7 @@ function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
     susp_rr: typeof raw.NormalizedSuspensionTravelRearRight === 'number' ? raw.NormalizedSuspensionTravelRearRight : (typeof raw.susp_rr === 'number' ? raw.susp_rr : 0.5),
     power_hp: cleanHp,
     torque_ftlb: cleanTq,
-    boost_psi: typeof raw.boost_psi === 'number' ? raw.boost_psi : boost * 0.145038,
+    boost_psi: typeof raw.boost_psi === 'number' ? raw.boost_psi : Math.round(boost * 10) / 10,
     fuel_pct: typeof raw.Fuel === 'number' ? raw.Fuel * 100 : (typeof raw.fuel_pct === 'number' ? raw.fuel_pct : 100),
     acceleration_x: typeof raw.AccelerationX === 'number' ? raw.AccelerationX : (typeof raw.acceleration_x === 'number' ? raw.acceleration_x : 0),
     acceleration_y: typeof raw.AccelerationY === 'number' ? raw.AccelerationY : (typeof raw.acceleration_y === 'number' ? raw.acceleration_y : 0),

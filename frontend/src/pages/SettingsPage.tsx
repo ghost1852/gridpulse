@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card } from '../components/ui/Card';
 import { useUnits } from '../context/UnitContext';
 import { useTelemetry } from '../hooks/useTelemetry';
+import { copyTextToClipboard } from '../lib/clipboard';
 import { 
   Gamepad2, 
   Cpu, 
@@ -147,11 +148,13 @@ export function SettingsPage() {
     }
   };
 
-  const copyForzaSettings = () => {
+  const copyForzaSettings = async () => {
     const text = `Data Out: ON\nData Out IP Address: ${bridgeIp}\nData Out IP Port: ${udpPort}\nData Out Packet Format: Car Dash`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const ok = await copyTextToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (

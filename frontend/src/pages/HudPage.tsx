@@ -3,6 +3,7 @@ import { useTelemetry } from '../hooks/useTelemetry';
 import { Speedometer } from '../components/hud/Speedometer';
 import { TireTemps } from '../components/hud/TireTemps';
 import { GForceCircle } from '../components/hud/GForceCircle';
+import { BoostGauge } from '../components/hud/BoostGauge';
 import { CarInfo } from '../components/hud/CarInfo';
 import { RaceAlertBanner } from '../components/hud/RaceAlertBanner';
 import { TractionDynamics } from '../components/hud/TractionDynamics';
@@ -168,12 +169,17 @@ export function HudPage() {
           suspRr={data.susp_rr}
         />
 
-        {/* G-Force Friction Circle Card with Slip Delta */}
-        <GForceCircle 
-          accelX={data.acceleration_x} 
-          accelZ={data.acceleration_z} 
-          slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
-        />
+        {/* Dynamic Telemetry Duo: G-Force Friction Circle + Boost / Vacuum Gauge */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <GForceCircle 
+            accelX={data.acceleration_x} 
+            accelZ={data.acceleration_z} 
+            slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
+          />
+          <BoostGauge 
+            boostPsi={data.boost_psi}
+          />
+        </div>
 
         {/* Bottom Nav Clearance Buffer */}
         <div className="h-6 pointer-events-none" />
@@ -204,7 +210,7 @@ export function HudPage() {
           </button>
         </div>
 
-        {/* Top Row: 3-Column Gauges (Tires & Laps | Speed & Pedals | G-Force) */}
+        {/* Top Row: 3-Column Gauges (Tires & Laps | Speed & Pedals | G-Force & Boost) */}
         <div className="grid grid-cols-12 gap-2 items-stretch flex-1 min-h-0">
           {/* Left: Tires & Center Lap Timer (col 5) */}
           <div className="col-span-5 flex flex-col justify-center">
@@ -242,12 +248,18 @@ export function HudPage() {
             />
           </div>
 
-          {/* Right: G-Force Circle (col 3) */}
-          <div className="col-span-3 flex flex-col justify-center">
-            <GForceCircle 
-              accelX={data.acceleration_x} 
-              accelZ={data.acceleration_z} 
-              slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
+          {/* Right: G-Force Circle & Boost Gauge Stack (col 3) */}
+          <div className="col-span-3 flex flex-col justify-between gap-2">
+            <div className="flex-1 min-h-0">
+              <GForceCircle 
+                accelX={data.acceleration_x} 
+                accelZ={data.acceleration_z} 
+                slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
+              />
+            </div>
+            <BoostGauge 
+              boostPsi={data.boost_psi}
+              compact={true}
             />
           </div>
         </div>

@@ -2,12 +2,14 @@
  * GridPulse Virtual Chassis Dyno & Gearing Thrust Engine
  * 
  * Capabilities:
- * 1. Single-Gear Engine Dyno (Pure HP & Torque vs RPM)
- * 2. Multi-Gear Thrust Dyno (Per-Gear Wheel Torque & Power vs Speed)
- * 3. 100-RPM Bucket Smoothing with 5252 RPM Crossover Verification
- * 4. Automatic WOT Pull Detection & In-App Staging Assistant
- * 5. Optimal Shift Point & Power Band Calculation
- * 6. 100% Local-First Offline Persistence via IndexedDB
+ * 1. Automatic "Drag-Strip Style" Auto-Arming & Pull Detection
+ * 2. 0.25s WOT Confirmation Window (eliminates false starts)
+ * 3. 0.3s Brake-Release Grace Period (allows car settling / brake stand launches)
+ * 4. Full RPM Sweep (records from idle all the way to limiter, zero early redline cuts)
+ * 5. Pull Quality Gates (detects partial vs full-range power pulls)
+ * 6. 100-RPM Bucket Smoothing with 5252 RPM Crossover Verification
+ * 7. Multi-Gear Thrust Dyno (Per-Gear Wheel Torque & Power vs Speed)
+ * 8. 100% Local-First Offline Persistence via IndexedDB
  */
 
 export interface DynoSample {
@@ -55,6 +57,7 @@ export interface DynoRun {
   createdAt: number;
   mode: 'single_gear' | 'multi_gear';
   targetGear: number;
+  quality: 'FULL' | 'PARTIAL';
   vehicle: {
     name: string;
     ordinal: number;
@@ -69,11 +72,13 @@ export interface DynoRun {
     peakTorqueRpm: number;
     peakBoostPsi: number;
     maxRpm: number;
+    observedMaxRpm: number;
     idleRpm: number;
     powerBandStartRpm: number; // RPM where power >= 85% of peak
     powerBandEndRpm: number;
     powerBandWidth: number;
     optimalShiftRpm: number;
+    durationSec: number;
   };
   rpmCurve: RpmPoint[]; // For Single-Gear Engine Dyno (vs RPM)
   perGearCurves: Record<number, GearPoint[]>; // For Multi-Gear Thrust Dyno (vs Speed)
@@ -124,9 +129,8 @@ export async function getAllDynoRuns(): Promise<DynoRun[]> {
     const store = tx.objectStore(STORE_NAME);
     const req = store.getAll();
     req.onsuccess = () => {
-      const results: DynoRun[] = req.result || [];
-      results.sort((a, b) => b.createdAt - a.createdAt);
-      resolve(results);
+      const runs = (req.result as DynoRun[]).sort((a, b) => b.createdAt - a.createdAt);
+      resolve(runs);
     };
     req.onerror = () => reject(req.error);
   });
@@ -146,7 +150,7 @@ export async function deleteDynoRun(id: string): Promise<void> {
 export function exportDynoRunToJson(run: DynoRun): string {
   const payload = {
     app: 'GridPulse',
-    version: '2.1.0',
+    version: '2.2.0',
     type: 'dyno_run',
     exportTimestamp: new Date().toISOString(),
     dynoRun: run
@@ -167,20 +171,25 @@ export function downloadDynoJsonFile(run: DynoRun): void {
   URL.revokeObjectURL(url);
 }
 
-export type DynoStage = 'IDLE' | 'STAGING' | 'PULLING' | 'COOLDOWN' | 'COMPLETED';
+export type DynoStage = 'DISARMED' | 'ARMED' | 'TRIGGERING' | 'PULLING' | 'COOLDOWN' | 'COMPLETED';
 
 export class DynoRecorder {
-  private isRecording = false;
+  private isArmed = false;
   private mode: 'single_gear' | 'multi_gear' = 'single_gear';
   private targetGear = 4;
-  private stage: DynoStage = 'IDLE';
-  private startTime = 0;
+  private stage: DynoStage = 'DISARMED';
+  private triggerStartTime = 0;
+  private pullStartTime = 0;
+  private liftStartTime = 0;
   private samples: DynoSample[] = [];
   private carInfo: any = null;
-  private engineMaxRpm = 8000;
+  private engineMaxRpm = 8500;
   private engineIdleRpm = 800;
 
-  public start(
+  /**
+   * Arm the Dyno (Waiting for driver to hit WOT)
+   */
+  public arm(
     mode: 'single_gear' | 'multi_gear' = 'single_gear',
     targetGear: number = 4,
     carInfo: any
@@ -188,26 +197,57 @@ export class DynoRecorder {
     this.mode = mode;
     this.targetGear = targetGear;
     this.carInfo = carInfo;
-    this.isRecording = true;
-    this.stage = 'STAGING';
-    this.startTime = Date.now();
+    this.isArmed = true;
+    this.stage = 'ARMED';
     this.samples = [];
+    this.triggerStartTime = 0;
+    this.pullStartTime = 0;
+    this.liftStartTime = 0;
   }
 
-  public processFrame(telemetry: any): { stage: DynoStage; progressPct: number; currentHp: number; currentTq: number } {
-    if (!this.isRecording || !telemetry) {
-      return { stage: 'IDLE', progressPct: 0, currentHp: 0, currentTq: 0 };
+  /**
+   * Disarm the Dyno
+   */
+  public disarm() {
+    this.isArmed = false;
+    this.stage = 'DISARMED';
+    this.samples = [];
+    this.triggerStartTime = 0;
+  }
+
+  private gearShiftStartTime = 0;
+  private brakeStartTime = 0;
+
+  public processFrame(telemetry: any): { 
+    stage: DynoStage; 
+    statusDetail: string;
+    progressPct: number; 
+    currentHp: number; 
+    currentTq: number;
+    currentRpm: number;
+    maxRpm: number;
+  } {
+    if (!this.isArmed || !telemetry) {
+      return { 
+        stage: 'DISARMED', 
+        statusDetail: 'DYNO DISARMED',
+        progressPct: 0, 
+        currentHp: 0, 
+        currentTq: 0, 
+        currentRpm: 0, 
+        maxRpm: 8500 
+      };
     }
 
     const now = Date.now();
-    const elapsedSec = (now - this.startTime) / 1000;
     const rpm = telemetry.current_engine_rpm || 0;
-    const maxRpm = telemetry.engine_max_rpm || 8000;
+    const maxRpm = telemetry.engine_max_rpm || 8500;
     const idleRpm = telemetry.engine_idle_rpm || 800;
     this.engineMaxRpm = maxRpm;
     this.engineIdleRpm = idleRpm;
 
     const throttlePct = Math.round(((telemetry.accel || 0) / 255) * 100);
+    const brakePct = Math.round(((telemetry.brake || 0) / 255) * 100);
     const gear = telemetry.gear || 0;
     const speedMph = Math.round(telemetry.speed_mph || 0);
     const speedKph = Math.round(telemetry.speed_kph || 0);
@@ -219,62 +259,126 @@ export class DynoRecorder {
     const torqueNm = Math.round((telemetry.torque || 0) * 10) / 10;
     const boostPsi = Math.round((telemetry.boost_psi || telemetry.boost || 0) * 10) / 10;
 
-    const isWot = throttlePct >= 90;
+    const isWot = throttlePct >= 80;
+    const isCorrectGear = this.mode === 'single_gear' ? gear === this.targetGear : gear >= 1;
+    let statusDetail = '';
 
-    if (this.mode === 'single_gear') {
-      // 1. Single Gear Mode logic
-      if (this.stage === 'STAGING') {
-        if (gear === this.targetGear && isWot && rpm < maxRpm * 0.75) {
-          this.stage = 'PULLING';
-        }
-      } else if (this.stage === 'PULLING') {
-        if (gear === this.targetGear && isWot) {
-          this.samples.push({
-            t: Number(elapsedSec.toFixed(2)),
-            rpm: Math.round(rpm),
-            speedMph,
-            speedKph,
-            hp: Math.max(0, hp),
-            torqueFtLb: Math.max(0, torqueFtLb),
-            torqueNm: Math.max(0, torqueNm),
-            gear,
-            throttle: throttlePct,
-            boostPsi
-          });
+    // =========================================================================
+    // STATE 1: ARMED (Waiting for initial WOT throttle trigger)
+    // =========================================================================
+    if (this.stage === 'ARMED') {
+      statusDetail = this.mode === 'single_gear'
+        ? `WAITING FOR PULL (Stage in Gear ${this.targetGear} & Floor Throttle)`
+        : `WAITING FOR PULL (Floor Throttle in Any Gear)`;
 
-          // Check if reached redline (>= 94% of max RPM)
-          if (rpm >= maxRpm * 0.94) {
+      if (isCorrectGear && isWot && brakePct < 15) {
+        this.stage = 'TRIGGERING';
+        this.triggerStartTime = now;
+      }
+    }
+    // =========================================================================
+    // STATE 2: TRIGGERING (0.25s WOT confirmation window to eliminate blips)
+    // =========================================================================
+    else if (this.stage === 'TRIGGERING') {
+      statusDetail = 'CONFIRMING WOT PULL...';
+      if (!isCorrectGear || !isWot || brakePct >= 18) {
+        // Aborted before 0.25s: Reset back to ARMED
+        this.stage = 'ARMED';
+        this.triggerStartTime = 0;
+      } else if (now - this.triggerStartTime >= 250) {
+        // Confirmed WOT sustained for >= 0.25s: Lock into PULLING
+        this.stage = 'PULLING';
+        this.pullStartTime = now;
+        this.liftStartTime = 0;
+        this.gearShiftStartTime = 0;
+        this.brakeStartTime = 0;
+        this.samples = [];
+      }
+    }
+    // =========================================================================
+    // STATE 3: PULLING (Active high-frequency dyno recording)
+    // =========================================================================
+    else if (this.stage === 'PULLING') {
+      const pullElapsedSec = (now - this.pullStartTime) / 1000;
+      const allowBrakeSettling = pullElapsedSec < 0.3; // Ignore brake during first 0.3s of launch
+
+      const isBraking = !allowBrakeSettling && brakePct >= 18;
+      const isWrongGear = this.mode === 'single_gear' && gear !== this.targetGear;
+      const isLifting = throttlePct < 65;
+
+      // Track intentional brake
+      if (isBraking) {
+        if (this.brakeStartTime === 0) this.brakeStartTime = now;
+      } else {
+        this.brakeStartTime = 0;
+      }
+
+      // Track sustained gear shift
+      if (isWrongGear) {
+        if (this.gearShiftStartTime === 0) this.gearShiftStartTime = now;
+      } else {
+        this.gearShiftStartTime = 0;
+      }
+
+      // Track sustained throttle lift
+      if (isLifting) {
+        if (this.liftStartTime === 0) this.liftStartTime = now;
+        statusDetail = 'ENDING – THROTTLE RELEASED...';
+      } else {
+        this.liftStartTime = 0;
+        statusDetail = throttlePct >= 88 ? 'PULLING – FULL WOT' : 'PULLING – MODULATING (RECORDING)';
+      }
+
+      // Accept sample if still in gear and not hard braking
+      if (isCorrectGear && !isBraking && throttlePct >= 65) {
+        this.samples.push({
+          t: Number(pullElapsedSec.toFixed(2)),
+          rpm: Math.round(rpm),
+          speedMph,
+          speedKph,
+          hp: Math.max(0, hp),
+          torqueFtLb: Math.max(0, torqueFtLb),
+          torqueNm: Math.max(0, torqueNm),
+          gear,
+          throttle: throttlePct,
+          boostPsi
+        });
+
+        // Detect engine hitting rev-limiter & falling
+        if (rpm >= maxRpm * 0.98 && this.samples.length > 30) {
+          const recentSamples = this.samples.slice(-8);
+          const maxRecent = Math.max(...recentSamples.map(s => s.rpm));
+          if (rpm < maxRecent - 100) {
             this.stage = 'COOLDOWN';
+            statusDetail = 'REDLINE HIT – PROCESSING PULL...';
           }
-        } else if (!isWot && this.samples.length > 25) {
-          // Driver lifted off throttle after pull
-          this.stage = 'COOLDOWN';
         }
       }
-    } else {
-      // 2. Multi-Gear Mode logic
-      if (this.stage === 'STAGING') {
-        if (isWot && gear >= 1) {
-          this.stage = 'PULLING';
-        }
-      } else if (this.stage === 'PULLING') {
-        if (isWot && gear >= 1) {
-          this.samples.push({
-            t: Number(elapsedSec.toFixed(2)),
-            rpm: Math.round(rpm),
-            speedMph,
-            speedKph,
-            hp: Math.max(0, hp),
-            torqueFtLb: Math.max(0, torqueFtLb),
-            torqueNm: Math.max(0, torqueNm),
-            gear,
-            throttle: throttlePct,
-            boostPsi
-          });
-        } else if (!isWot && this.samples.length > 40) {
+
+      // Evaluate End Triggers
+      const sustainedLift = this.liftStartTime > 0 && now - this.liftStartTime >= 850;
+      const sustainedBrake = this.brakeStartTime > 0 && now - this.brakeStartTime >= 250;
+      const sustainedShift = this.gearShiftStartTime > 0 && now - this.gearShiftStartTime >= 500;
+
+      if (sustainedLift || sustainedBrake || sustainedShift) {
+        if (this.samples.length >= 25) {
           this.stage = 'COOLDOWN';
+          statusDetail = 'PROCESSING DYNO CURVE...';
+        } else {
+          // False start / short blip (<25 samples): Discard and re-arm
+          this.stage = 'ARMED';
+          this.samples = [];
+          this.triggerStartTime = 0;
+          this.liftStartTime = 0;
+          this.brakeStartTime = 0;
+          this.gearShiftStartTime = 0;
+          statusDetail = 'PULL ABORTED (<0.4s). RE-ARMED.';
         }
       }
+    } else if (this.stage === 'COOLDOWN') {
+      statusDetail = 'PROCESSING POWER CURVE...';
+    } else if (this.stage === 'COMPLETED') {
+      statusDetail = 'SAVED & RE-ARMED FOR NEXT PULL';
     }
 
     const progressPct = maxRpm > idleRpm 
@@ -283,19 +387,25 @@ export class DynoRecorder {
 
     return {
       stage: this.stage,
+      statusDetail,
       progressPct,
       currentHp: hp,
-      currentTq: torqueFtLb
+      currentTq: torqueFtLb,
+      currentRpm: Math.round(rpm),
+      maxRpm: Math.round(maxRpm)
     };
   }
 
-  public async stop(): Promise<DynoRun | null> {
-    if (!this.isRecording || !this.carInfo || this.samples.length < 15) {
-      this.isRecording = false;
-      this.stage = 'IDLE';
+  /**
+   * Finalize and Process the Dyno Run
+   */
+  public async finishAndSave(): Promise<DynoRun | null> {
+    if (!this.carInfo || this.samples.length < 20) {
+      this.stage = this.isArmed ? 'ARMED' : 'DISARMED';
+      this.samples = [];
       return null;
     }
-    this.isRecording = false;
+
     this.stage = 'COMPLETED';
 
     // 1. Process RPM Curve into 100 RPM Buckets
@@ -305,7 +415,6 @@ export class DynoRecorder {
     const sortedSamples = [...this.samples].sort((a, b) => a.rpm - b.rpm);
 
     for (const s of sortedSamples) {
-      // Exclude zero-power samples
       if (s.hp <= 5 || s.torqueFtLb <= 5) continue;
       const bucketRpm = Math.round(s.rpm / 100) * 100;
       if (!bucketMap[bucketRpm]) {
@@ -367,11 +476,18 @@ export class DynoRecorder {
       }
     }
 
+    const observedMaxRpm = sortedSamples.length > 0 
+      ? Math.max(...sortedSamples.map(s => s.rpm)) 
+      : this.engineMaxRpm;
+
+    // Quality gate: Full pull if reached >= 88% of engine redline
+    const isFullPull = observedMaxRpm >= this.engineMaxRpm * 0.88;
+
     // 3. Compute 85% Power Band Range
     const thresholdHp = peakHp * 0.85;
     const powerBandPoints = smoothedRpmCurve.filter(pt => pt.hp >= thresholdHp);
     const powerBandStartRpm = powerBandPoints.length > 0 ? powerBandPoints[0].rpm : Math.round(this.engineMaxRpm * 0.6);
-    const powerBandEndRpm = powerBandPoints.length > 0 ? powerBandPoints[powerBandPoints.length - 1].rpm : this.engineMaxRpm;
+    const powerBandEndRpm = powerBandPoints.length > 0 ? powerBandPoints[powerBandPoints.length - 1].rpm : observedMaxRpm;
     const powerBandWidth = Math.max(0, powerBandEndRpm - powerBandStartRpm);
 
     // 4. Compute Per-Gear Curves (for Multi-Gear Mode)
@@ -390,7 +506,6 @@ export class DynoRecorder {
       });
     }
 
-    // Sort each gear curve by speed
     for (const g in perGearCurves) {
       perGearCurves[g].sort((a, b) => a.speedMph - b.speedMph);
     }
@@ -421,12 +536,17 @@ export class DynoRecorder {
       }
     }
 
+    const durationSec = this.samples.length > 0 
+      ? Number((this.samples[this.samples.length - 1].t).toFixed(1)) 
+      : 0;
+
     const dynoRun: DynoRun = {
       id: `dyno-${Date.now()}`,
       name: `Dyno Pull (${this.mode === 'single_gear' ? `Gear ${this.targetGear}` : 'Multi-Gear'}) - ${this.carInfo.name}`,
       createdAt: Date.now(),
       mode: this.mode,
       targetGear: this.targetGear,
+      quality: isFullPull ? 'FULL' : 'PARTIAL',
       vehicle: {
         name: this.carInfo.name,
         ordinal: this.carInfo.ordinal,
@@ -441,11 +561,13 @@ export class DynoRecorder {
         peakTorqueRpm,
         peakBoostPsi,
         maxRpm: this.engineMaxRpm,
+        observedMaxRpm,
         idleRpm: this.engineIdleRpm,
         powerBandStartRpm,
         powerBandEndRpm,
         powerBandWidth,
-        optimalShiftRpm: Math.round(peakHpRpm * 1.03)
+        optimalShiftRpm: Math.round(peakHpRpm * 1.03),
+        durationSec
       },
       rpmCurve: smoothedRpmCurve,
       perGearCurves,
@@ -454,11 +576,17 @@ export class DynoRecorder {
     };
 
     await saveDynoRun(dynoRun);
+    
+    // Auto re-arm for next pull
+    this.stage = 'ARMED';
+    this.samples = [];
+    this.triggerStartTime = 0;
+
     return dynoRun;
   }
 
-  public getIsRecording(): boolean {
-    return this.isRecording;
+  public getIsArmed(): boolean {
+    return this.isArmed;
   }
 
   public getStage(): DynoStage {
