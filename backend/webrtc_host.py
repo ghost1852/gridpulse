@@ -99,33 +99,27 @@ def clean_sdp_candidates(raw_sdp: str) -> str:
     """
     Cleans SDP candidates in Bridge answer:
     - Strips unroutable APIPA (169.254.*) addresses from virtual NICs.
-    - Preserves all host, srflx, and relay candidates without altering RFC priorities.
+    - Replaces unroutable c= connection address with 0.0.0.0 if APIPA.
+    - Appends all valid host, srflx, and relay candidates strictly at the end of the media section (RFC compliant).
     """
     lines = raw_sdp.splitlines()
-    non_candidates: List[str] = []
+    cleaned_non_candidates: List[str] = []
     candidates: List[str] = []
     
     for line in lines:
-        if line.startswith("a=candidate:"):
+        if line.startswith("c=IN IP4 169.254."):
+            cleaned_non_candidates.append("c=IN IP4 0.0.0.0")
+        elif line.startswith("a=candidate:"):
             if "169.254." in line:
                 continue
             candidates.append(line)
         elif line.startswith("a=end-of-candidates"):
             continue
         else:
-            non_candidates.append(line)
+            cleaned_non_candidates.append(line)
     
-    result: List[str] = []
-    candidates_inserted = False
-    for line in non_candidates:
-        if (line.startswith("a=ice-ufrag:") or line.startswith("a=fingerprint:")) and not candidates_inserted:
-            if candidates:
-                result.extend(candidates)
-                result.append("a=end-of-candidates")
-            candidates_inserted = True
-        result.append(line)
-        
-    if not candidates_inserted and candidates:
+    result = list(cleaned_non_candidates)
+    if candidates:
         result.extend(candidates)
         result.append("a=end-of-candidates")
         
@@ -139,27 +133,19 @@ class WebRtcHost:
         
         # Primary STUN servers for Direct P2P
         ice_servers = [
-            RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun.relay.metered.ca:80"])
+            RTCIceServer(urls=["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"])
         ]
         
-        # TURN relay fallback via credentials
-        turn_url = turn_server or os.environ.get("GRIDPULSE_TURN_SERVER", "").strip() or "turn:global.relay.metered.ca:80?transport=udp"
-        turn_user = turn_username or os.environ.get("GRIDPULSE_TURN_USER", "").strip() or "209b522bcd85f9169da1bc48"
-        turn_pass = turn_password or os.environ.get("GRIDPULSE_TURN_PASS", "").strip() or "660slSqG6ARvPTC/"
+        # Optional TURN relay fallback via environment variables / secrets
+        turn_url = turn_server or os.environ.get("GRIDPULSE_TURN_SERVER", "").strip()
+        turn_user = turn_username or os.environ.get("GRIDPULSE_TURN_USER", "").strip()
+        turn_pass = turn_password or os.environ.get("GRIDPULSE_TURN_PASS", "").strip()
         
         if turn_url:
             logger.info(f"🌐 Configured WebRTC TURN relay fallback: {turn_url}")
             ice_servers.append(
                 RTCIceServer(
                     urls=[turn_url],
-                    username=turn_user if turn_user else None,
-                    credential=turn_pass if turn_pass else None
-                )
-            )
-            # Support TLS TCP fallback
-            ice_servers.append(
-                RTCIceServer(
-                    urls=["turns:global.relay.metered.ca:443?transport=tcp"],
                     username=turn_user if turn_user else None,
                     credential=turn_pass if turn_pass else None
                 )
@@ -238,11 +224,11 @@ class WebRtcHost:
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
-        # Wait for ICE gathering to complete so all candidate pairs are embedded in SDP
-        for _ in range(30):
+        # Wait for ICE gathering to complete so all candidate pairs (including TURN relay) are embedded in SDP
+        for _ in range(100):
             if pc.iceGatheringState == "complete":
                 break
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.1)
 
         raw_answer_sdp = pc.localDescription.sdp if pc.localDescription else ""
         cleaned_sdp = clean_sdp_candidates(raw_answer_sdp)

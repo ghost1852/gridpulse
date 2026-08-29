@@ -132,27 +132,7 @@ export class WebRtcTelemetryClient {
 
       const iceServers: RTCIceServer[] = [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun.relay.metered.ca:80' },
-        {
-          urls: 'turn:global.relay.metered.ca:80',
-          username: '209b522bcd85f9169da1bc48',
-          credential: '660slSqG6ARvPTC/'
-        },
-        {
-          urls: 'turn:global.relay.metered.ca:80?transport=tcp',
-          username: '209b522bcd85f9169da1bc48',
-          credential: '660slSqG6ARvPTC/'
-        },
-        {
-          urls: 'turn:global.relay.metered.ca:443',
-          username: '209b522bcd85f9169da1bc48',
-          credential: '660slSqG6ARvPTC/'
-        },
-        {
-          urls: 'turns:global.relay.metered.ca:443?transport=tcp',
-          username: '209b522bcd85f9169da1bc48',
-          credential: '660slSqG6ARvPTC/'
-        }
+        { urls: 'stun:stun1.l.google.com:19302' }
       ];
 
       // Support dynamic custom TURN overrides via URL query params or localStorage
@@ -308,7 +288,7 @@ export class WebRtcTelemetryClient {
       await this.pc.setRemoteDescription(new RTCSessionDescription(answerSdp));
       this.reportDiagnostics();
 
-      // 5. Start explicit 25s ICE connectivity watchdog
+      // 5. Start explicit 45s ICE connectivity watchdog
       this.iceTimeout = setTimeout(() => {
         if (this.pc && this.pc.iceConnectionState !== 'connected' && this.pc.iceConnectionState !== 'completed') {
           this.warn(`ICE connectivity watchdog timed out (State: ${this.pc.iceConnectionState}).`);
@@ -316,7 +296,7 @@ export class WebRtcTelemetryClient {
             this.onStateChange('error');
           }
         }
-      }, 25000);
+      }, 45000);
 
     } catch (err) {
       this.error('Fatal error during connection setup:', err);
@@ -351,9 +331,9 @@ export class WebRtcTelemetryClient {
 
     this.log(`⏳ Offer published (offer_id=${offerId}). Polling for Bridge SDP Answer on ${answerThing}...`);
 
-    // 2. Poll for matching answer
+    // 2. Poll for matching answer (up to 45s with 500ms intervals)
     const startTime = Date.now();
-    while (Date.now() - startTime < 30000) {
+    while (Date.now() - startTime < 45000) {
       try {
         const resp = await fetch(`${SIGNALING_URL_BASE}/get/latest/dweet/for/${answerThing}`);
         if (resp.ok) {
@@ -376,7 +356,7 @@ export class WebRtcTelemetryClient {
       } catch (pollErr) {
         this.warn('Polling tick error:', pollErr);
       }
-      await new Promise((r) => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 500));
     }
 
     throw new Error('Signaling handshake timed out');
@@ -445,7 +425,7 @@ export class WebRtcTelemetryClient {
       timeout = setTimeout(() => {
         this.pc?.removeEventListener('icegatheringstatechange', check);
         resolve();
-      }, 3500);
+      }, 6000);
     });
   }
 
