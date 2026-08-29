@@ -13,6 +13,7 @@ import {
   type Stint 
 } from '../lib/stints';
 import { 
+  ComposedChart,
   LineChart, 
   Line, 
   XAxis, 
@@ -21,7 +22,6 @@ import {
   ResponsiveContainer, 
   CartesianGrid, 
   ReferenceLine,
-  AreaChart,
   Area
 } from 'recharts';
 import { 
@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 
 export function RaceAnalyzePage() {
-  const { telemetry, connected } = useTelemetry();
+  const { telemetry } = useTelemetry();
   const { convertTemp } = useUnits();
 
   const [stints, setStints] = useState<Stint[]>([]);
@@ -157,6 +157,20 @@ export function RaceAnalyzePage() {
     return raw.filter((_, i) => i % step === 0);
   }, [activeStint]);
 
+  // Detect if this was a drift session
+  const driftMetrics = useMemo(() => {
+    if (!activeStint || !activeStint.samples || activeStint.samples.length === 0) return null;
+    const maxSlip = Math.max(...activeStint.samples.map(s => Math.abs(s.slipAngleDelta || 0)));
+    const wheelspinEvents = activeStint.events.filter(e => e.type === 'WHEELSPIN').length;
+    const isDrift = maxSlip > 0.6 || wheelspinEvents >= 4 || activeStint.peakLatG > 1.5;
+    return {
+      isDrift,
+      maxSlipRad: maxSlip,
+      maxSlipDeg: Math.round(maxSlip * (180 / Math.PI)),
+      wheelspinEvents
+    };
+  }, [activeStint]);
+
   const copyAiPrompt = () => {
     if (!activeStint) return;
     const prompt = `### GridPulse Telemetry Stint Analysis Request
@@ -164,6 +178,7 @@ export function RaceAnalyzePage() {
 **Stint Duration**: ${activeStint.totalDurationSeconds}s | **Distance**: ${activeStint.totalDistanceMiles} miles | **Laps**: ${activeStint.totalLaps}
 **Best Lap**: ${activeStint.bestLapTime > 0 ? `${activeStint.bestLapTime.toFixed(3)}s` : 'N/A'}
 **Top Speed**: ${activeStint.topSpeedMph} MPH | **Peak Lateral G**: ${activeStint.peakLatG} G | **Peak Tire Temp**: ${activeStint.peakTireTemp}°F
+${driftMetrics?.isDrift ? `**Stint Type**: 💨 Drift Stint (Max Slip Angle: ${driftMetrics.maxSlipDeg}° / ${driftMetrics.maxSlipRad.toFixed(2)} rad, Wheelspin Events: ${driftMetrics.wheelspinEvents})` : '**Stint Type**: 🏁 Circuit / Grip Race'}
 
 **Observed Driving Events**:
 ${activeStint.events.length > 0 ? activeStint.events.map(ev => `- [Lap ${ev.lapNumber} @ ${ev.timestamp}s] ${ev.type}: ${ev.description} (Severity: ${Math.round(ev.severity * 100)}%)`).join('\n') : '- Zero critical instability events detected.'}
@@ -198,24 +213,23 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
               INDEXEDDB LOCAL-FIRST
             </span>
           </div>
-          <p className="text-xs text-gray-400 font-mono mt-1">
+          <p className="text-xs font-mono text-gray-400 mt-1">
             Analyze recorded driving stints, multi-lap overlays, braking points, tire degradation &amp; export AI-ready datasets.
           </p>
         </div>
 
-        {/* Action Buttons: Live Record & Import */}
-        <div className="flex items-center gap-2 shrink-0">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileUpload} 
-            accept=".json" 
-            className="hidden" 
+        {/* Action Buttons: Import & Live Recorder */}
+        <div className="flex items-center gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            accept=".json"
+            className="hidden"
           />
-          
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white text-xs font-mono font-bold transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-xs font-mono font-bold transition-all cursor-pointer"
           >
             <Upload size={14} />
             <span>Import JSON</span>
@@ -223,24 +237,30 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
 
           <button
             onClick={toggleRecording}
-            disabled={!connected && !isRecording}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-mono font-black transition-all cursor-pointer ${
-              isRecording 
-                ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/30 animate-pulse'
-                : connected
-                  ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/20'
-                  : 'bg-white/10 text-gray-500 cursor-not-allowed'
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-mono font-black tracking-wider transition-all cursor-pointer shadow-lg ${
+              isRecording
+                ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-red-500/30'
+                : 'bg-emerald-500 hover:bg-emerald-600 text-black shadow-emerald-500/20'
             }`}
           >
-            {isRecording ? <Square size={14} className="fill-white" /> : <Play size={14} className="fill-black" />}
-            <span>{isRecording ? `STOP REC (${recordSeconds}s)` : 'RECORD LIVE STINT'}</span>
+            {isRecording ? (
+              <>
+                <Square size={14} className="fill-current" />
+                <span>STOP ({recordSeconds}s)</span>
+              </>
+            ) : (
+              <>
+                <Play size={14} className="fill-current" />
+                <span>RECORD LIVE STINT</span>
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* Stint Selector Carousel / List */}
+      {/* Stint History Reel */}
       {stints.length > 0 ? (
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
           {stints.map((stint) => {
             const isSelected = stint.id === selectedStintId;
             return (
@@ -302,9 +322,16 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
               <div className="text-xs font-mono font-bold text-white truncate mt-1">
                 {activeStint.carName}
               </div>
-              <Badge carClass={activeStint.carClass} className="text-[9px] self-start mt-1">
-                {activeStint.carClass} {activeStint.carPi}
-              </Badge>
+              <div className="flex items-center gap-1 mt-1">
+                <Badge carClass={activeStint.carClass} className="text-[9px] self-start">
+                  {activeStint.carClass} {activeStint.carPi}
+                </Badge>
+                {driftMetrics?.isDrift && (
+                  <span className="text-[8px] font-mono font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    DRIFT
+                  </span>
+                )}
+              </div>
             </Card>
 
             <Card className="p-3 bg-[#0e0e16] border-white/10 flex flex-col justify-between">
@@ -377,7 +404,7 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
 
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
+                <ComposedChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
                   <XAxis dataKey="t" stroke="#6b7280" fontSize={10} tickFormatter={(v) => `${v}s`} />
                   <YAxis yAxisId="speed" stroke="#38bdf8" fontSize={10} domain={[0, 'auto']} />
@@ -385,10 +412,10 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#0a0a10', borderColor: '#ffffff20', borderRadius: '8px', fontSize: '11px', fontFamily: 'monospace' }} 
                   />
-                  <Area yAxisId="pedal" type="monotone" dataKey="throttle" stroke="#10b981" fill="#10b98120" strokeWidth={1.5} name="Throttle %" />
-                  <Area yAxisId="pedal" type="monotone" dataKey="brake" stroke="#ef4444" fill="#ef444430" strokeWidth={1.5} name="Brake %" />
-                  <Line yAxisId="speed" type="monotone" dataKey="speedMph" stroke="#38bdf8" strokeWidth={2} dot={false} name="Speed (MPH)" />
-                </AreaChart>
+                  <Area yAxisId="pedal" type="monotone" dataKey="throttle" stroke="#10b981" fill="#10b98120" strokeWidth={1.5} name="Throttle %" isAnimationActive={false} />
+                  <Area yAxisId="pedal" type="monotone" dataKey="brake" stroke="#ef4444" fill="#ef444430" strokeWidth={1.5} name="Brake %" isAnimationActive={false} />
+                  <Line yAxisId="speed" type="monotone" dataKey="speedMph" stroke="#38bdf8" strokeWidth={2} dot={false} name="Speed (MPH)" isAnimationActive={false} />
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </Card>
@@ -419,10 +446,10 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
                     <XAxis dataKey="t" stroke="#6b7280" fontSize={10} tickFormatter={(v) => `${v}s`} />
                     <YAxis stroke="#9ca3af" fontSize={10} domain={['auto', 'auto']} />
                     <Tooltip contentStyle={{ backgroundColor: '#0a0a10', borderColor: '#ffffff20', borderRadius: '8px', fontSize: '11px', fontFamily: 'monospace' }} />
-                    <Line type="monotone" dataKey="tempFl" stroke="#38bdf8" strokeWidth={1.5} dot={false} name="FL Temp (°F)" />
-                    <Line type="monotone" dataKey="tempFr" stroke="#22d3ee" strokeWidth={1.5} dot={false} name="FR Temp (°F)" />
-                    <Line type="monotone" dataKey="tempRl" stroke="#f59e0b" strokeWidth={1.5} dot={false} name="RL Temp (°F)" />
-                    <Line type="monotone" dataKey="tempRr" stroke="#f43f5e" strokeWidth={1.5} dot={false} name="RR Temp (°F)" />
+                    <Line type="monotone" dataKey="tempFl" stroke="#38bdf8" strokeWidth={1.5} dot={false} isAnimationActive={false} name="FL Temp (°F)" />
+                    <Line type="monotone" dataKey="tempFr" stroke="#22d3ee" strokeWidth={1.5} dot={false} isAnimationActive={false} name="FR Temp (°F)" />
+                    <Line type="monotone" dataKey="tempRl" stroke="#f59e0b" strokeWidth={1.5} dot={false} isAnimationActive={false} name="RL Temp (°F)" />
+                    <Line type="monotone" dataKey="tempRr" stroke="#f43f5e" strokeWidth={1.5} dot={false} isAnimationActive={false} name="RR Temp (°F)" />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -434,26 +461,28 @@ Please act as an expert race engineer and driver coach. Analyze this stint summa
                 <div className="flex items-center gap-2">
                   <Compass size={16} className="text-emerald-400" />
                   <h3 className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-                    Chassis Balance (Under/Oversteer)
+                    {driftMetrics?.isDrift ? 'Drift Slip Angle & Counter-Steer' : 'Chassis Balance (Under/Oversteer)'}
                   </h3>
                 </div>
                 <span className="text-[9px] font-mono text-gray-500 font-bold">
-                  &lt; -0.06 Understeer | &gt; 0.08 Oversteer
+                  {driftMetrics?.isDrift ? `Max Drift: ${driftMetrics.maxSlipDeg}°` : '< -0.06 Under | > 0.08 Over'}
                 </span>
               </div>
 
               <div className="h-52 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
+                  <ComposedChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
                     <XAxis dataKey="t" stroke="#6b7280" fontSize={10} tickFormatter={(v) => `${v}s`} />
-                    <YAxis stroke="#9ca3af" fontSize={10} domain={[-0.3, 0.3]} />
+                    <YAxis yAxisId="slip" stroke="#10b981" fontSize={10} domain={['auto', 'auto']} />
+                    <YAxis yAxisId="steer" orientation="right" stroke="#f59e0b" fontSize={10} domain={[-127, 127]} />
                     <Tooltip contentStyle={{ backgroundColor: '#0a0a10', borderColor: '#ffffff20', borderRadius: '8px', fontSize: '11px', fontFamily: 'monospace' }} />
-                    <ReferenceLine y={0} stroke="#ffffff40" />
-                    <ReferenceLine y={-0.06} stroke="#f59e0b50" strokeDasharray="3 3" />
-                    <ReferenceLine y={0.08} stroke="#22d3ee50" strokeDasharray="3 3" />
-                    <Line type="monotone" dataKey="slipAngleDelta" stroke="#10b981" strokeWidth={1.5} dot={false} name="Slip Angle Delta (rad)" />
-                  </LineChart>
+                    <ReferenceLine yAxisId="slip" y={0} stroke="#ffffff40" />
+                    <ReferenceLine yAxisId="slip" y={-0.06} stroke="#f59e0b50" strokeDasharray="3 3" />
+                    <ReferenceLine yAxisId="slip" y={0.08} stroke="#22d3ee50" strokeDasharray="3 3" />
+                    <Line yAxisId="slip" type="monotone" dataKey="slipAngleDelta" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} name="Slip Angle Delta" />
+                    <Line yAxisId="steer" type="monotone" dataKey="steer" stroke="#f59e0b80" strokeWidth={1} dot={false} isAnimationActive={false} name="Steer Input (-127..+127)" strokeDasharray="2 2" />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </Card>
