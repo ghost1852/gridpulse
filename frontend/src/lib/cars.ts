@@ -156,11 +156,28 @@ export function getCarInfo(
   const customCars = getCustomCars();
   
   if (numOrdinal > 0 && customCars[numOrdinal]) {
+    const savedCar = customCars[numOrdinal];
+    const fullCarName = getCarByOrdinal(numOrdinal);
+    const isPlaceholder = !savedCar.name || savedCar.name.startsWith('Car #') || savedCar.name.startsWith('Vehicle Ordinal') || savedCar.manufacturer === 'Forza Garage';
+    
+    if (isPlaceholder && fullCarName !== 'Unknown Vehicle') {
+      const parsed = parseCarNameDetails(fullCarName);
+      return {
+        ...savedCar,
+        name: parsed.name,
+        manufacturer: parsed.manufacturer,
+        year: parsed.year,
+        class: fallbackClass || savedCar.class || 'S1',
+        pi: fallbackPi || savedCar.pi || 900,
+        build: savedCar.build || DEFAULT_BUILD,
+      };
+    }
+
     return {
-      ...customCars[numOrdinal],
-      class: fallbackClass || customCars[numOrdinal].class || 'S1',
-      pi: fallbackPi || customCars[numOrdinal].pi || 900,
-      build: customCars[numOrdinal].build || DEFAULT_BUILD,
+      ...savedCar,
+      class: fallbackClass || savedCar.class || 'S1',
+      pi: fallbackPi || savedCar.pi || 900,
+      build: savedCar.build || DEFAULT_BUILD,
     };
   }
 
