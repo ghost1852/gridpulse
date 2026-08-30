@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gridpulse-v20-nocache';
+const CACHE_NAME = 'gridpulse-v30-purge';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

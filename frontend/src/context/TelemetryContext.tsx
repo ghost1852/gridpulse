@@ -360,7 +360,6 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
 
   const setCustomGateAtCurrentPosition = () => {
     const t = latestTelemetryRef.current;
-    playGateChime('set');
 
     if (t && (t.position_x !== 0 || t.position_z !== 0)) {
       globalLapEngine.setCustomGate(
@@ -384,20 +383,26 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
       lastFeedbackRef.current = fb;
       updateLapStateFromEngine(null, fb);
     }
+
+    try {
+      setTimeout(() => playGateChime('set'), 0);
+    } catch {}
   };
 
   const resetLapTiming = () => {
     globalLapEngine.resetLap(); // KEEPS GATE, resets timer, prepares fresh Lap 1 crossing
-    playGateChime('armed');
     const msg = '🔄 Lap timing reset. S/F Gate kept armed for next run!';
     const fb = { message: msg, timestamp: Date.now(), type: 'info' as const };
     lastFeedbackRef.current = fb;
     updateLapStateFromEngine(latestTelemetryRef.current, fb);
+
+    try {
+      setTimeout(() => playGateChime('armed'), 0);
+    } catch {}
   };
 
   const clearGate = () => {
     globalLapEngine.clearGate(); // Removes gate & deletes localStorage
-    playGateChime('lap');
     const msg = '🗑 S/F Gate cleared! Returned to free-roam mode.';
     const fb = { message: msg, timestamp: Date.now(), type: 'cleared' as const };
     lastFeedbackRef.current = fb;
@@ -425,6 +430,10 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
       clearGate,
       resetLapTiming
     }));
+
+    try {
+      setTimeout(() => playGateChime('lap'), 0);
+    } catch {}
   };
 
   const updateLapStateFromEngine = (

@@ -7,7 +7,7 @@ import { GForceCircle } from '../components/hud/GForceCircle';
 import { CarInfo } from '../components/hud/CarInfo';
 import { RaceAlertBanner } from '../components/hud/RaceAlertBanner';
 import { TractionDynamics } from '../components/hud/TractionDynamics';
-import { Maximize2, Minimize2, CheckCircle2, Trash2, MapPin, RotateCcw } from 'lucide-react';
+import { Maximize2, Minimize2, CheckCircle2, Trash2, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
@@ -117,53 +117,6 @@ export function HudPage() {
           drivetrainType={data.drivetrain_type}
           racePosition={data.race_position}
         />
-
-        {/* Dedicated Full-Width Quick S/F Bar (Identical to Analyze Page) */}
-        <div className="flex items-center gap-1.5 w-full">
-          {!lapState.hasCustomGate ? (
-            <button
-              type="button"
-              onClick={setCustomGateAtCurrentPosition}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:bg-emerald-500/45 text-emerald-300 hover:text-emerald-100 border border-emerald-500/50 text-xs font-mono font-black tracking-wider transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_15px_rgba(0,255,136,0.2)]"
-              title="Set Start/Finish Line at vehicle's current GPS position"
-            >
-              <MapPin size={15} className="text-emerald-400" />
-              <span>📍 SET START/FINISH LINE HERE</span>
-            </button>
-          ) : (
-            <div className="flex items-center gap-1.5 w-full">
-              <button
-                type="button"
-                onClick={resetLapTiming}
-                className="flex-1 flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/35 active:bg-cyan-500/50 text-cyan-200 hover:text-white border border-cyan-500/40 text-xs font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_10px_rgba(6,182,212,0.15)]"
-                title="Reset active lap timer to 0 and re-arm gate"
-              >
-                <RotateCcw size={13} className="text-cyan-300" />
-                <span>RESET LAP</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={setCustomGateAtCurrentPosition}
-                className="flex-1 flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/35 active:bg-purple-500/50 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_10px_rgba(168,85,247,0.15)]"
-                title="Move Start/Finish Line to current position"
-              >
-                <MapPin size={13} className="text-purple-300" />
-                <span>MOVE S/F</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={clearGate}
-                className="flex items-center justify-center gap-1 py-2 px-3 rounded-xl bg-red-500/20 hover:bg-red-500/35 active:bg-red-500/50 text-red-300 hover:text-red-100 border border-red-500/40 text-xs font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shrink-0"
-                title="Clear Start/Finish Gate and return to Free Roam"
-              >
-                <Trash2 size={13} className="text-red-400" />
-                <span>CLEAR</span>
-              </button>
-            </div>
-          )}
-        </div>
 
         {/* Action / Gate Feedback Toast */}
         <AnimatePresence>
@@ -306,53 +259,6 @@ export function HudPage() {
               drivetrainType={data.drivetrain_type}
               racePosition={data.race_position}
             />
-          </div>
-
-          {/* Quick S/F Bar in Landscape */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {!lapState.hasCustomGate ? (
-              <button
-                type="button"
-                onClick={setCustomGateAtCurrentPosition}
-                className="flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:bg-emerald-500/45 text-emerald-300 hover:text-emerald-100 border border-emerald-500/50 text-xs font-mono font-black tracking-wider transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_15px_rgba(0,255,136,0.2)]"
-                title="Set Start/Finish Line at vehicle's current GPS position"
-              >
-                <MapPin size={13} className="text-emerald-400" />
-                <span>SET S/F LINE</span>
-              </button>
-            ) : (
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={resetLapTiming}
-                  className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/35 active:bg-cyan-500/50 text-cyan-200 hover:text-white border border-cyan-500/40 text-xs font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_10px_rgba(6,182,212,0.15)]"
-                  title="Reset active lap timer to 0 and re-arm gate"
-                >
-                  <RotateCcw size={12} className="text-cyan-300" />
-                  <span>RESET LAP</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={setCustomGateAtCurrentPosition}
-                  className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/35 active:bg-purple-500/50 text-purple-200 hover:text-white border border-purple-500/40 text-xs font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_10px_rgba(168,85,247,0.15)]"
-                  title="Move Start/Finish Line to current position"
-                >
-                  <MapPin size={12} className="text-purple-300" />
-                  <span>MOVE S/F</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={clearGate}
-                  className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/35 active:bg-red-500/50 text-red-300 hover:text-red-100 border border-red-500/40 text-xs font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shrink-0"
-                  title="Clear Start/Finish Gate and return to Free Roam"
-                >
-                  <Trash2 size={12} className="text-red-400" />
-                  <span>CLEAR</span>
-                </button>
-              </div>
-            )}
           </div>
 
           <button
