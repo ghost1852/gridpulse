@@ -184,7 +184,7 @@ export function HudPage() {
             />
           </div>
 
-          {/* Top-Right: Dedicated Lap Timer & Time Attack Controls (Set, Reset, Clear) */}
+          {/* Top-Right: Dedicated Lap Timer & Time Attack Controls (Reset Lap, Move S/F, Clear) */}
           <div className="min-w-0 h-full min-h-[175px]">
             <LapTimer 
               currentLap={data.current_lap > 0 ? data.current_lap : lapState.liveLapTime}
@@ -196,6 +196,7 @@ export function HudPage() {
               isDirty={lapState.isDirty}
               hasCustomGate={lapState.hasCustomGate}
               onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
+              onResetLap={lapState.resetLapTiming}
               onClearGate={lapState.clearGate}
             />
           </div>
@@ -309,6 +310,7 @@ export function HudPage() {
                 isDirty={lapState.isDirty}
                 hasCustomGate={lapState.hasCustomGate}
                 onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
+                onResetLap={lapState.resetLapTiming}
                 onClearGate={lapState.clearGate}
               />
             </div>

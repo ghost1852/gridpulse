@@ -14,6 +14,7 @@ interface LapTimerProps {
   isDirty?: boolean;
   hasCustomGate?: boolean;
   onSetCustomGate?: () => void;
+  onResetLap?: () => void;
   onClearGate?: () => void;
 }
 
@@ -27,6 +28,7 @@ export function LapTimer({
   isDirty,
   hasCustomGate,
   onSetCustomGate,
+  onResetLap,
   onClearGate
 }: LapTimerProps) {
   
@@ -128,25 +130,43 @@ export function LapTimer({
         </div>
       </div>
 
-      {/* Action Buttons: Large and easy to tap with immediate touch response */}
+      {/* Action Buttons: 3 Clearly Distinct Operations */}
       <div className="pt-1.5 shrink-0">
         {hasCustomGate ? (
-          <div className="grid grid-cols-2 gap-2">
-            {onSetCustomGate && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onSetCustomGate();
-                }}
-                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-purple-500/25 hover:bg-purple-500/40 active:bg-purple-500/50 text-purple-200 hover:text-white border border-purple-500/50 text-xs font-mono font-bold transition-all cursor-pointer select-none touch-manipulation active:scale-95 shadow-[0_0_12px_rgba(168,85,247,0.2)]"
-                title="Reset Start/Finish Line at current GPS position"
-              >
-                <RotateCcw size={12} className="text-purple-300" />
-                <span>RESET S/F</span>
-              </button>
-            )}
+          <div className="flex flex-col gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
+              {onResetLap && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onResetLap();
+                  }}
+                  className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/35 active:bg-cyan-500/50 text-cyan-200 hover:text-white border border-cyan-500/40 text-[11px] font-mono font-bold transition-all cursor-pointer select-none touch-manipulation active:scale-95 shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+                  title="Reset active lap timer to 0 and re-arm gate (keeps gate intact)"
+                >
+                  <RotateCcw size={11} className="text-cyan-300" />
+                  <span>RESET LAP</span>
+                </button>
+              )}
+              {onSetCustomGate && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSetCustomGate();
+                  }}
+                  className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/35 active:bg-purple-500/50 text-purple-200 hover:text-white border border-purple-500/40 text-[11px] font-mono font-bold transition-all cursor-pointer select-none touch-manipulation active:scale-95 shadow-[0_0_10px_rgba(168,85,247,0.15)]"
+                  title="Move Start/Finish Line to vehicle's current GPS position"
+                >
+                  <MapPin size={11} className="text-purple-300" />
+                  <span>MOVE S/F</span>
+                </button>
+              )}
+            </div>
+
             {onClearGate && (
               <button
                 type="button"
@@ -155,11 +175,11 @@ export function LapTimer({
                   e.stopPropagation();
                   onClearGate();
                 }}
-                className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/35 active:bg-red-500/50 text-red-300 hover:text-red-100 border border-red-500/40 text-xs font-mono font-bold transition-all cursor-pointer select-none touch-manipulation active:scale-95 shadow-[0_0_12px_rgba(239,68,68,0.2)]"
-                title="Clear Start/Finish Gate"
+                className="w-full flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg bg-red-500/15 hover:bg-red-500/30 active:bg-red-500/40 text-red-300 hover:text-red-100 border border-red-500/30 text-[10.5px] font-mono font-bold transition-all cursor-pointer select-none touch-manipulation active:scale-95"
+                title="Clear Start/Finish Gate and return to Free Roam"
               >
-                <Trash2 size={12} className="text-red-400" />
-                <span>CLEAR</span>
+                <Trash2 size={11} className="text-red-400" />
+                <span>CLEAR S/F GATE</span>
               </button>
             )}
           </div>
