@@ -202,9 +202,9 @@ export function HudPage() {
               isArmed={lapState.isArmed}
               isDirty={lapState.isDirty}
               hasCustomGate={lapState.hasCustomGate}
-              onSetCustomGate={setCustomGateAtCurrentPosition}
-              onResetLap={resetLapTiming}
-              onClearGate={clearGate}
+              onSetCustomGate={lapState.setCustomGateAtCurrentPosition || setCustomGateAtCurrentPosition}
+              onResetLap={lapState.resetLapTiming || resetLapTiming}
+              onClearGate={lapState.clearGate || clearGate}
             />
           </div>
 
@@ -316,9 +316,9 @@ export function HudPage() {
                 isArmed={lapState.isArmed}
                 isDirty={lapState.isDirty}
                 hasCustomGate={lapState.hasCustomGate}
-                onSetCustomGate={setCustomGateAtCurrentPosition}
-                onResetLap={resetLapTiming}
-                onClearGate={clearGate}
+                onSetCustomGate={lapState.setCustomGateAtCurrentPosition || setCustomGateAtCurrentPosition}
+                onResetLap={lapState.resetLapTiming || resetLapTiming}
+                onClearGate={lapState.clearGate || clearGate}
               />
             </div>
             <div className="flex-1 min-h-0">

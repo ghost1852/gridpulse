@@ -171,10 +171,20 @@ export function TireTemps({
                 </h4>
               </div>
               <button
-                onClick={() => setInspectedCorner(null)}
-                className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-gray-300 hover:text-white cursor-pointer"
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => {
+                  e.stopPropagation();
+                  setInspectedCorner(null);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setInspectedCorner(null);
+                }}
+                className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl bg-white/15 hover:bg-white/25 active:bg-white/40 text-white cursor-pointer touch-manipulation z-40 select-none active:scale-95"
+                title="Close Tire Telemetry"
               >
-                <X size={14} />
+                <X size={16} className="text-white" />
               </button>
             </div>
 

@@ -138,8 +138,15 @@ export function LapTimer({
               {onResetLap && (
                 <button
                   type="button"
-                  onClick={onResetLap}
-                  className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/35 active:bg-cyan-500/50 text-cyan-200 hover:text-white border border-cyan-500/40 text-[11px] font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_10px_rgba(6,182,212,0.15)]"
+                  onTouchEnd={(e) => {
+                    e.stopPropagation();
+                    onResetLap();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onResetLap();
+                  }}
+                  className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/35 active:bg-cyan-500/50 text-cyan-200 hover:text-white border border-cyan-500/40 text-[11px] font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_10px_rgba(6,182,212,0.15)] touch-manipulation"
                   title="Reset active lap timer to 0 and re-arm gate (keeps gate intact)"
                 >
                   <RotateCcw size={11} className="text-cyan-300" />
@@ -149,8 +156,15 @@ export function LapTimer({
               {onSetCustomGate && (
                 <button
                   type="button"
-                  onClick={onSetCustomGate}
-                  className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/35 active:bg-purple-500/50 text-purple-200 hover:text-white border border-purple-500/40 text-[11px] font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_10px_rgba(168,85,247,0.15)]"
+                  onTouchEnd={(e) => {
+                    e.stopPropagation();
+                    onSetCustomGate();
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSetCustomGate();
+                  }}
+                  className="flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/35 active:bg-purple-500/50 text-purple-200 hover:text-white border border-purple-500/40 text-[11px] font-mono font-bold transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_10px_rgba(168,85,247,0.15)] touch-manipulation"
                   title="Move Start/Finish Line to vehicle's current GPS position"
                 >
                   <MapPin size={11} className="text-purple-300" />
@@ -162,8 +176,15 @@ export function LapTimer({
             {onClearGate && (
               <button
                 type="button"
-                onClick={onClearGate}
-                className="w-full flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg bg-red-500/15 hover:bg-red-500/30 active:bg-red-500/40 text-red-300 hover:text-red-100 border border-red-500/30 text-[10.5px] font-mono font-bold transition-all cursor-pointer select-none active:scale-95"
+                onTouchEnd={(e) => {
+                  e.stopPropagation();
+                  onClearGate();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClearGate();
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-1 px-2 rounded-lg bg-red-500/15 hover:bg-red-500/30 active:bg-red-500/40 text-red-300 hover:text-red-100 border border-red-500/30 text-[10.5px] font-mono font-bold transition-all cursor-pointer select-none active:scale-95 touch-manipulation"
                 title="Clear Start/Finish Gate and return to Free Roam"
               >
                 <Trash2 size={11} className="text-red-400" />
@@ -175,8 +196,15 @@ export function LapTimer({
           onSetCustomGate && (
             <button
               type="button"
-              onClick={onSetCustomGate}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:bg-emerald-500/45 text-emerald-300 hover:text-emerald-100 border border-emerald-500/50 text-xs font-mono font-black tracking-wider transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_15px_rgba(0,255,136,0.2)]"
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                onSetCustomGate();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetCustomGate();
+              }}
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 active:bg-emerald-500/45 text-emerald-300 hover:text-emerald-100 border border-emerald-500/50 text-xs font-mono font-black tracking-wider transition-all cursor-pointer select-none active:scale-95 shadow-[0_0_15px_rgba(0,255,136,0.2)] touch-manipulation"
               title="Set Start/Finish Gate at current GPS location"
             >
               <MapPin size={14} className="text-emerald-400" />
