@@ -153,6 +153,9 @@ export interface TelemetryContextType {
   telemetry: TelemetryData | null;
   analytics: AnalyticsState | null;
   lapState: LiveLapState;
+  setCustomGateAtCurrentPosition: () => void;
+  clearGate: () => void;
+  resetLapTiming: () => void;
   connected: boolean;
   reconnecting: boolean;
   transport: TransportType;
@@ -715,6 +718,9 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
       telemetry,
       analytics,
       lapState,
+      setCustomGateAtCurrentPosition,
+      clearGate,
+      resetLapTiming,
       connected,
       reconnecting,
       transport,

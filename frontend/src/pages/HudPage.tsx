@@ -12,7 +12,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
 export function HudPage() {
-  const { telemetry, connected, lapState } = useTelemetry();
+  const { 
+    telemetry, 
+    connected, 
+    lapState,
+    setCustomGateAtCurrentPosition,
+    resetLapTiming,
+    clearGate
+  } = useTelemetry();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -187,17 +194,17 @@ export function HudPage() {
           {/* Top-Right: Dedicated Lap Timer & Time Attack Controls (Reset Lap, Move S/F, Clear) */}
           <div className="min-w-0 h-full min-h-[175px]">
             <LapTimer 
-              currentLap={data.current_lap > 0 ? data.current_lap : lapState.liveLapTime}
-              bestLap={data.best_lap > 0 ? data.best_lap : lapState.bestLapTime}
-              lastLap={data.last_lap > 0 ? data.last_lap : lapState.lastLapTime}
-              lapNumber={data.lap_number > 0 ? data.lap_number : lapState.lapNumber}
+              currentLap={lapState.hasCustomGate ? lapState.liveLapTime : (data.current_lap > 0 ? data.current_lap : lapState.liveLapTime)}
+              bestLap={lapState.hasCustomGate ? lapState.bestLapTime : (data.best_lap > 0 ? data.best_lap : lapState.bestLapTime)}
+              lastLap={lapState.hasCustomGate ? lapState.lastLapTime : (data.last_lap > 0 ? data.last_lap : lapState.lastLapTime)}
+              lapNumber={lapState.hasCustomGate ? lapState.lapNumber : (data.lap_number > 0 ? data.lap_number : lapState.lapNumber)}
               liveDeltaVsPb={lapState.liveDeltaVsPb}
               isArmed={lapState.isArmed}
               isDirty={lapState.isDirty}
               hasCustomGate={lapState.hasCustomGate}
-              onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
-              onResetLap={lapState.resetLapTiming}
-              onClearGate={lapState.clearGate}
+              onSetCustomGate={setCustomGateAtCurrentPosition}
+              onResetLap={resetLapTiming}
+              onClearGate={clearGate}
             />
           </div>
 
@@ -301,17 +308,17 @@ export function HudPage() {
           <div className="col-span-4 flex flex-col justify-between gap-2">
             <div className="flex-1 min-h-0">
               <LapTimer 
-                currentLap={data.current_lap > 0 ? data.current_lap : lapState.liveLapTime}
-                bestLap={data.best_lap > 0 ? data.best_lap : lapState.bestLapTime}
-                lastLap={data.last_lap > 0 ? data.last_lap : lapState.lastLapTime}
-                lapNumber={data.lap_number > 0 ? data.lap_number : lapState.lapNumber}
+                currentLap={lapState.hasCustomGate ? lapState.liveLapTime : (data.current_lap > 0 ? data.current_lap : lapState.liveLapTime)}
+                bestLap={lapState.hasCustomGate ? lapState.bestLapTime : (data.best_lap > 0 ? data.best_lap : lapState.bestLapTime)}
+                lastLap={lapState.hasCustomGate ? lapState.lastLapTime : (data.last_lap > 0 ? data.last_lap : lapState.lastLapTime)}
+                lapNumber={lapState.hasCustomGate ? lapState.lapNumber : (data.lap_number > 0 ? data.lap_number : lapState.lapNumber)}
                 liveDeltaVsPb={lapState.liveDeltaVsPb}
                 isArmed={lapState.isArmed}
                 isDirty={lapState.isDirty}
                 hasCustomGate={lapState.hasCustomGate}
-                onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
-                onResetLap={lapState.resetLapTiming}
-                onClearGate={lapState.clearGate}
+                onSetCustomGate={setCustomGateAtCurrentPosition}
+                onResetLap={resetLapTiming}
+                onClearGate={clearGate}
               />
             </div>
             <div className="flex-1 min-h-0">
