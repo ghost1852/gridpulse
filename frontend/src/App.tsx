@@ -88,11 +88,11 @@ export function App() {
         {/* Download Bridge CTA */}
         <div className="p-3 border-t border-white/5">
           <a
-            href="https://github.com/ghost1852/gridpulse/releases/download/v2.1.0/GridPulse-Bridge-Windows.zip"
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-bold transition-all shadow-[0_0_15px_rgba(0,255,136,0.08)]"
+            href="https://github.com/ghost1852/gridpulse/raw/main/GridPulse-Bridge-Windows.zip"
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-mono font-bold transition-all shadow-[0_0_15px_rgba(0,255,136,0.08)] cursor-pointer"
           >
             <Download size={14} />
-            <span>Windows Bridge (.EXE)</span>
+            <span>Windows Bridge (.ZIP)</span>
           </a>
         </div>
 

@@ -314,21 +314,23 @@ export class LapInferenceEngine {
       };
     }
 
-    // 3. AUTO-GATE ACQUISITION (If no gate exists and vehicle reaches launch/circuit speed)
+    // 3. NO AUTO-GATE CREATION (Gate is strictly configured by the user via explicit Set S/F)
     const hasValid3D = (posX !== 0 || posZ !== 0) && !isNaN(posX) && !isNaN(posZ);
-    if (hasValid3D) {
-      if (!this.gate && currentSpeed >= 12.0 && this.distanceTraveled >= 10.0) {
-        const vMag = Math.sqrt(velX * velX + velZ * velZ) || 1.0;
-        this.gate = {
-          position: { x: posX, y: posY, z: posZ },
-          normal: { x: velX / vMag, z: velZ / vMag },
-          widthMeters: 30.0,
-          createdAt: Date.now()
-        };
-        this.lapStartTime = timestampSec;
-        this.lapStartDistance = this.distanceTraveled;
-        this.state = 'RUNNING';
-      }
+    if (!this.gate && (gameCurrentLap <= 0 && gameLastLap <= 0)) {
+      this.state = 'IDLE';
+      this.lastPos = { x: posX, y: posY, z: posZ };
+      this.lastTime = timestampSec;
+
+      return {
+        liveLapTime: 0,
+        lapNumber: 0,
+        completedLap: null,
+        state: 'IDLE',
+        distanceToGate: null,
+        isArmed: false,
+        liveDeltaVsPb: null,
+        isDirty: false
+      };
     }
 
     // 4. SPATIAL HYPERPLANE CROSSING DETECTION

@@ -7,7 +7,9 @@ import { GForceCircle } from '../components/hud/GForceCircle';
 import { CarInfo } from '../components/hud/CarInfo';
 import { RaceAlertBanner } from '../components/hud/RaceAlertBanner';
 import { TractionDynamics } from '../components/hud/TractionDynamics';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { Maximize2, Minimize2, CheckCircle2, Trash2, MapPin } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '../lib/utils';
 
 export function HudPage() {
   const { telemetry, connected, lapState } = useTelemetry();
@@ -108,6 +110,28 @@ export function HudPage() {
           drivetrainType={data.drivetrain_type}
           racePosition={data.race_position}
         />
+
+        {/* Action / Gate Feedback Toast */}
+        <AnimatePresence>
+          {lapState.lastFeedback && (
+            <motion.div
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.98 }}
+              className={cn(
+                "px-3 py-1.5 rounded-xl text-xs font-mono font-bold flex items-center gap-2 border shadow-lg",
+                lapState.lastFeedback.type === 'success' && "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_15px_rgba(0,255,136,0.15)]",
+                lapState.lastFeedback.type === 'cleared' && "bg-red-500/20 text-red-300 border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.15)]",
+                lapState.lastFeedback.type === 'info' && "bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+              )}
+            >
+              {lapState.lastFeedback.type === 'success' && <CheckCircle2 size={14} className="text-emerald-400 shrink-0" />}
+              {lapState.lastFeedback.type === 'cleared' && <Trash2 size={14} className="text-red-400 shrink-0" />}
+              {lapState.lastFeedback.type === 'info' && <MapPin size={14} className="text-cyan-400 shrink-0" />}
+              <span className="flex-1 text-[11px]">{lapState.lastFeedback.message}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Live Race Alerts Banner */}
         <RaceAlertBanner
