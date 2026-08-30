@@ -26,6 +26,11 @@ interface TireTempsProps {
   bestLap?: number;
   lastLap?: number;
   lapNumber?: number;
+  liveDeltaVsPb?: number | null;
+  isArmed?: boolean;
+  isDirty?: boolean;
+  hasCustomGate?: boolean;
+  onSetCustomGate?: () => void;
 }
 
 export function TireTemps({ 
@@ -36,7 +41,11 @@ export function TireTemps({
   currentLap = 0,
   bestLap = 0,
   lastLap = 0,
-  lapNumber = 0
+  lapNumber = 0,
+  liveDeltaVsPb,
+  isDirty,
+  hasCustomGate,
+  onSetCustomGate
 }: TireTempsProps) {
   const { convertTemp } = useUnits();
   const [inspectedCorner, setInspectedCorner] = useState<'FL' | 'FR' | 'RL' | 'RR' | null>(null);
@@ -202,22 +211,29 @@ export function TireTemps({
           </div>
 
           {/* Current Lap Time */}
-          <div className="font-mono text-base sm:text-lg font-black text-white tracking-wider leading-none">
+          <div className={cn(
+            "font-mono text-base sm:text-lg font-black tracking-wider leading-none",
+            isDirty ? "text-amber-400" : "text-white"
+          )}>
             {formatLapTime(currentLap)}
           </div>
 
-          {/* Delta vs Best Lap */}
+          {/* Delta vs PB / Best Lap */}
           <div className="mt-1 flex items-center justify-center gap-1">
             <span className="text-[7px] sm:text-[8px] font-mono text-gray-400 uppercase">DELTA</span>
             <span className={cn(
-              "text-[9px] sm:text-[10px] font-mono font-black",
-              delta === null ? "text-gray-500" : isDeltaFaster ? "text-emerald-400" : "text-red-400"
+              "text-[9px] sm:text-[10px] font-mono font-black px-1 rounded",
+              liveDeltaVsPb !== null && liveDeltaVsPb !== undefined
+                ? (liveDeltaVsPb <= 0 ? "text-emerald-400 bg-emerald-400/10" : "text-red-400 bg-red-400/10")
+                : (delta === null ? "text-gray-500" : isDeltaFaster ? "text-emerald-400" : "text-red-400")
             )}>
-              {delta !== null ? `${delta >= 0 ? '+' : ''}${delta.toFixed(3)}s` : '--.---'}
+              {liveDeltaVsPb !== null && liveDeltaVsPb !== undefined
+                ? `${liveDeltaVsPb <= 0 ? '' : '+'}${liveDeltaVsPb.toFixed(2)}s`
+                : (delta !== null ? `${delta >= 0 ? '+' : ''}${delta.toFixed(3)}s` : '--.---')}
             </span>
           </div>
 
-          {/* Best Lap */}
+          {/* Best Lap & Gate Status */}
           <div className="mt-1.5 pt-1 border-t border-white/10 w-full flex flex-col items-center">
             <span className="text-[7px] sm:text-[8px] font-mono font-bold text-emerald-400 uppercase">
               BEST {bestLap > 0 ? formatLapTime(bestLap) : '--:--.---'}
@@ -231,6 +247,20 @@ export function TireTemps({
               <span className="text-[7px] font-mono text-gray-400 mt-0.5 font-bold">
                 LAP {lapNumber}
               </span>
+            )}
+
+            {/* S/F Gate Pill */}
+            {onSetCustomGate && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSetCustomGate();
+                }}
+                className="mt-1 text-[7px] font-mono bg-white/10 hover:bg-cyan-500/20 text-gray-300 hover:text-cyan-400 px-1.5 py-0.5 rounded font-bold transition"
+                title="Set Start/Finish Gate at current GPS location"
+              >
+                {hasCustomGate ? 'RESET S/F' : 'SET S/F'}
+              </button>
             )}
           </div>
         </div>

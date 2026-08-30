@@ -10,7 +10,7 @@ import { TractionDynamics } from '../components/hud/TractionDynamics';
 import { Maximize2, Minimize2 } from 'lucide-react';
 
 export function HudPage() {
-  const { telemetry, connected } = useTelemetry();
+  const { telemetry, connected, lapState } = useTelemetry();
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -76,7 +76,10 @@ export function HudPage() {
     lap_number: 0,
     race_position: 1, 
     drivetrain_type: 1,
-    car_ordinal: 2544
+    car_ordinal: 2544,
+    position_x: 0,
+    position_y: 0,
+    position_z: 0
   };
 
   // Loss-of-control dynamic edge warning (severe spin / snap oversteer / full lockup at speed)
@@ -154,10 +157,15 @@ export function HudPage() {
               slipAngleRl={data.slip_angle_rl} slipAngleRr={data.slip_angle_rr}
               suspFl={data.susp_fl} suspFr={data.susp_fr}
               suspRl={data.susp_rl} suspRr={data.susp_rr}
-              currentLap={data.current_lap}
-              bestLap={data.best_lap}
-              lastLap={data.last_lap}
-              lapNumber={data.lap_number}
+              currentLap={data.current_lap > 0 ? data.current_lap : lapState.liveLapTime}
+              bestLap={data.best_lap > 0 ? data.best_lap : lapState.bestLapTime}
+              lastLap={data.last_lap > 0 ? data.last_lap : lapState.lastLapTime}
+              lapNumber={data.lap_number > 0 ? data.lap_number : lapState.lapNumber}
+              liveDeltaVsPb={lapState.liveDeltaVsPb}
+              isArmed={lapState.isArmed}
+              isDirty={lapState.isDirty}
+              hasCustomGate={lapState.hasCustomGate}
+              onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
             />
           </div>
 
@@ -243,10 +251,15 @@ export function HudPage() {
               slipAngleRl={data.slip_angle_rl} slipAngleRr={data.slip_angle_rr}
               suspFl={data.susp_fl} suspFr={data.susp_fr}
               suspRl={data.susp_rl} suspRr={data.susp_rr}
-              currentLap={data.current_lap}
-              bestLap={data.best_lap}
-              lastLap={data.last_lap}
-              lapNumber={data.lap_number}
+              currentLap={data.current_lap > 0 ? data.current_lap : lapState.liveLapTime}
+              bestLap={data.best_lap > 0 ? data.best_lap : lapState.bestLapTime}
+              lastLap={data.last_lap > 0 ? data.last_lap : lapState.lastLapTime}
+              lapNumber={data.lap_number > 0 ? data.lap_number : lapState.lapNumber}
+              liveDeltaVsPb={lapState.liveDeltaVsPb}
+              isArmed={lapState.isArmed}
+              isDirty={lapState.isDirty}
+              hasCustomGate={lapState.hasCustomGate}
+              onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
             />
           </div>
 

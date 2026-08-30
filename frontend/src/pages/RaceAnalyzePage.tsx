@@ -39,11 +39,12 @@ import {
   Compass, 
   Flame, 
   AlertTriangle,
-  ShieldAlert
+  ShieldAlert,
+  MapPin
 } from 'lucide-react';
 
 export function RaceAnalyzePage() {
-  const { telemetry } = useTelemetry();
+  const { telemetry, lapState } = useTelemetry();
   const { convertTemp } = useUnits();
 
   const [stints, setStints] = useState<Stint[]>([]);
@@ -215,8 +216,8 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
           </div>
         </div>
 
-        {/* Action Controls: Mode Selector, Import & Recorder */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-white/5 font-mono">
+        {/* Action Controls: Mode Selector, S/F Gate, Import & Recorder */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 pt-1 border-t border-white/5 font-mono">
           {/* Mode Override Dropdown */}
           <div className="flex items-center justify-between bg-black/60 px-3 py-2 rounded-xl border border-white/10 text-xs">
             <span className="text-gray-400 text-[10px] font-bold uppercase shrink-0 mr-2">MODE:</span>
@@ -235,6 +236,20 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
               <option value="FREE_ROAM" className="bg-[#111118]">🚗 Free Roam</option>
             </select>
           </div>
+
+          {/* S/F Gate Control */}
+          <button
+            onClick={lapState.setCustomGateAtCurrentPosition}
+            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+              lapState.hasCustomGate
+                ? 'bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30'
+                : 'bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-300 border-white/10 text-gray-300'
+            }`}
+            title="Set spatial Start/Finish Line at current vehicle GPS position and heading"
+          >
+            <MapPin size={14} className={lapState.hasCustomGate ? "text-purple-400" : "text-cyan-400"} />
+            <span>{lapState.hasCustomGate ? 'Reset S/F Gate' : 'Set S/F Line'}</span>
+          </button>
 
           <button
             onClick={() => fileInputRef.current?.click()}

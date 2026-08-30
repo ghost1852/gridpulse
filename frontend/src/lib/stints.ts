@@ -57,7 +57,7 @@ export interface ImpactEvent {
 }
 
 export interface DrivingEvent {
-  type: 'UNDERSTEER' | 'OVERSTEER' | 'WHEELSPIN' | 'LOCKUP' | 'BOTTOMING' | 'OVERHEATING' | 'WALL_IMPACT' | 'BARRIER_COLLISION' | 'JUMP_LANDING';
+  type: 'UNDERSTEER' | 'OVERSTEER' | 'WHEELSPIN' | 'LOCKUP' | 'BOTTOMING' | 'OVERHEATING' | 'WALL_IMPACT' | 'BARRIER_COLLISION' | 'JUMP_LANDING' | 'REWIND_DETECTED';
   timestamp: number;
   lapNumber: number;
   severity: number; // 0.0 - 1.0
@@ -348,6 +348,19 @@ export class StintRecorder {
   private bottomingCount = 0;
   private lastCurrentLap = 0;
   private lastLapNumber = 1;
+  private lastCurrentRaceTime = 0;
+  private lastTimestampMS = 0;
+  private wasRewound = false;
+
+  // Virtual GPS Timing Gate & Lap Engine (LapScope / fh6-tel pattern)
+  private gatePosition: { x: number; y: number; z: number } | null = null;
+  private gateHeading: { x: number; z: number } | null = null;
+  private gateArmTime = 0;
+  private gateArmDistance = 0;
+  private currentLapStartTime = 0;
+  private virtualLapIndex = 1;
+  private activeMovingTime = 0;
+  private launchDetected = false;
 
   public start(
     carInfo: { name: string; ordinal: number; class: string; pi: number; drivetrain: string }, 
@@ -384,6 +397,18 @@ export class StintRecorder {
     this.bottomingCount = 0;
     this.lastCurrentLap = 0;
     this.lastLapNumber = 1;
+    this.lastCurrentRaceTime = 0;
+    this.lastTimestampMS = 0;
+    this.wasRewound = false;
+
+    this.gatePosition = null;
+    this.gateHeading = null;
+    this.gateArmTime = 0;
+    this.gateArmDistance = 0;
+    this.currentLapStartTime = 0;
+    this.virtualLapIndex = 1;
+    this.activeMovingTime = 0;
+    this.launchDetected = false;
   }
 
   public getActiveDuration(): number {
@@ -413,8 +438,39 @@ export class StintRecorder {
     if (dt > 0.005 && dt < 0.5) {
       if (currentSpeed > 0.5) {
         this.groundDistanceMeters += (currentSpeed * 0.44704) * dt;
+        this.activeMovingTime += dt;
       }
     }
+
+    // Launch detection
+    if (!this.launchDetected && currentSpeed > 3 && (telemetry.accel || 0) > 60) {
+      this.launchDetected = true;
+      if (this.currentLapStartTime === 0) {
+        this.currentLapStartTime = elapsedSec;
+      }
+    }
+
+    // =========================================================================
+    // 1. REWIND DETECTION (fh6-tel pattern)
+    // =========================================================================
+    const ts = telemetry.timestamp_ms || 0;
+    const raceTime = telemetry.current_race_time || 0;
+    const dist = telemetry.distance_traveled || 0;
+
+    if ((this.lastTimestampMS > 0 && ts > 0 && ts < this.lastTimestampMS - 250) || 
+        (this.lastCurrentRaceTime > 0 && raceTime > 0 && raceTime < this.lastCurrentRaceTime - 0.5) ||
+        (this.lastDistance > 0 && dist > 0 && dist < this.lastDistance - 5)) {
+      this.wasRewound = true;
+      this.events.push({
+        type: 'REWIND_DETECTED',
+        timestamp: Number(elapsedSec.toFixed(2)),
+        lapNumber: telemetry.lap_number || 1,
+        severity: 0.6,
+        description: `Rewind detected @ ${Math.round(currentSpeed)} MPH. Lap flagged as dirty.`
+      });
+    }
+    this.lastTimestampMS = ts;
+    this.lastCurrentRaceTime = raceTime;
 
     // Track peak records
     if (currentSpeed > this.topSpeed) this.topSpeed = currentSpeed;
@@ -428,32 +484,36 @@ export class StintRecorder {
     const maxT = Math.max(telemetry.tire_temp_fl || 0, telemetry.tire_temp_fr || 0, telemetry.tire_temp_rl || 0, telemetry.tire_temp_rr || 0);
     if (maxT > this.peakTemp) this.peakTemp = maxT;
 
-    // Track in-game completed laps
+    // =========================================================================
+    // 2. LAP TRACKING: IN-GAME OFFICIAL LAPS vs VIRTUAL GPS GATES
+    // =========================================================================
     const currentLapTime = telemetry.current_lap || 0;
     const lastLapTime = telemetry.last_lap || 0;
     const lapNum = telemetry.lap_number || 1;
 
-    // 1. Game provided last_lap on new lap transition
+    // A. Game provided last_lap on official circuit transition
     if (lastLapTime > 0 && lapNum > 1) {
       const completedLapIndex = lapNum - 1;
       if (!this.laps.has(completedLapIndex) || this.laps.get(completedLapIndex)?.lapTime !== lastLapTime) {
         this.laps.set(completedLapIndex, {
           lapNumber: completedLapIndex,
           lapTime: Number(lastLapTime.toFixed(3)),
-          valid: true
+          valid: !this.wasRewound
         });
+        this.wasRewound = false;
       }
     }
 
-    // 2. Lap number increased or currentLap reset
+    // B. Lap number increased or in-game currentLap timer reset
     if (this.lastLapNumber > 0 && lapNum > this.lastLapNumber && this.lastCurrentLap > 5) {
       const completedLap = this.lastLapNumber;
       if (!this.laps.has(completedLap)) {
         this.laps.set(completedLap, {
           lapNumber: completedLap,
           lapTime: Number((lastLapTime > 0 ? lastLapTime : this.lastCurrentLap).toFixed(3)),
-          valid: true
+          valid: !this.wasRewound
         });
+        this.wasRewound = false;
       }
     } else if (this.lastCurrentLap > 15 && currentLapTime < 2 && currentLapTime > 0) {
       const completedLap = this.laps.size + 1;
@@ -461,12 +521,58 @@ export class StintRecorder {
         this.laps.set(completedLap, {
           lapNumber: completedLap,
           lapTime: Number(this.lastCurrentLap.toFixed(3)),
-          valid: true
+          valid: !this.wasRewound
         });
+        this.wasRewound = false;
       }
     }
     this.lastCurrentLap = currentLapTime;
     this.lastLapNumber = lapNum;
+
+    // C. Virtual GPS Start/Finish Gate (LapScope Closed Circuit Loops in Free Roam)
+    const posX = telemetry.position_x ?? telemetry.PositionX;
+    const posY = telemetry.position_y ?? telemetry.PositionY;
+    const posZ = telemetry.position_z ?? telemetry.PositionZ;
+
+    if (posX !== undefined && posZ !== undefined && (posX !== 0 || posZ !== 0)) {
+      if (!this.gatePosition && currentSpeed > 8) {
+        this.gatePosition = { x: posX, y: posY || 0, z: posZ };
+        const velX = telemetry.velocity_x || 0;
+        const velZ = telemetry.velocity_z || 1;
+        const mag = Math.sqrt(velX * velX + velZ * velZ) || 1;
+        this.gateHeading = { x: velX / mag, z: velZ / mag };
+        this.gateArmTime = elapsedSec + 15;
+        this.gateArmDistance = this.groundDistanceMeters + 300;
+        this.currentLapStartTime = elapsedSec;
+      }
+
+      if (this.gatePosition && elapsedSec >= this.gateArmTime && this.groundDistanceMeters >= this.gateArmDistance) {
+        const dx = posX - this.gatePosition.x;
+        const dz = posZ - this.gatePosition.z;
+        const distToGate = Math.sqrt(dx * dx + dz * dz);
+
+        const velX = telemetry.velocity_x || 0;
+        const velZ = telemetry.velocity_z || 1;
+        const mag = Math.sqrt(velX * velX + velZ * velZ) || 1;
+        const headingDot = this.gateHeading ? (velX / mag) * this.gateHeading.x + (velZ / mag) * this.gateHeading.z : 1;
+
+        if (distToGate <= 22 && headingDot > 0.40 && currentSpeed > 12) {
+          const virtualLapTime = Number((elapsedSec - this.currentLapStartTime).toFixed(3));
+          if (virtualLapTime > 15) {
+            const lapIdx = this.virtualLapIndex++;
+            this.laps.set(lapIdx, {
+              lapNumber: lapIdx,
+              lapTime: virtualLapTime,
+              valid: !this.wasRewound
+            });
+            this.gateArmTime = elapsedSec + 15;
+            this.gateArmDistance = this.groundDistanceMeters + 300;
+            this.currentLapStartTime = elapsedSec;
+            this.wasRewound = false;
+          }
+        }
+      }
+    }
 
     // =========================================================================
     // 1. PHYSICS-BASED WALL / BARRIER IMPACT DETECTION
@@ -635,10 +741,6 @@ export class StintRecorder {
     const finalDistanceMeters = this.groundDistanceMeters > 0 ? this.groundDistanceMeters : rawGameMeters;
     const distanceMiles = finalDistanceMeters * 0.000621371;
 
-    const lapsList = Array.from(this.laps.values());
-    const hasRecordedLaps = lapsList.length > 0;
-    const bestLap = hasRecordedLaps ? Math.min(...lapsList.map(l => l.lapTime)) : 0;
-
     // Derived style calculations
     const slideSamples = this.samples.filter(s => s.speedMph > 20 && Math.abs(s.slipAngleDelta) >= 0.20 && Math.abs(s.slipAngleDelta) <= 1.35);
     const maxSlipRad = slideSamples.length > 0 ? Math.max(...slideSamples.map(s => Math.abs(s.slipAngleDelta))) : 0;
@@ -669,6 +771,43 @@ export class StintRecorder {
       roughnessIndex: Math.min(100, Math.round(this.bottomingCount * 10 + this.jumpCount * 15))
     };
 
+    // Mode Detection: Preferred Mode ALWAYS wins if set by user!
+    let detectedMode: SessionMode = this.preferredMode || 'FREE_ROAM';
+    if (!this.preferredMode) {
+      const avgSpeedMph = totalDuration > 0 ? (distanceMiles / (totalDuration / 3600)) : 0;
+      const isIntentionalDrift = (driftSummary.timeInSlideSec >= 4.0 && driftSummary.slidePct >= 35 && driftSummary.transitionCount >= 3 && maxSlipDeg >= 22);
+
+      if (isIntentionalDrift) {
+        detectedMode = 'DRIFT';
+      } else if (this.jumpCount >= 2 || (this.jumpCount >= 1 && this.bottomingCount >= 3)) {
+        detectedMode = 'OFFROAD';
+      } else if (this.laps.size >= 2) {
+        detectedMode = 'CIRCUIT';
+      } else if (this.laps.size === 1 || avgSpeedMph > 45) {
+        detectedMode = 'TIME_ATTACK';
+      } else if (totalDuration < 35 && this.topSpeed > 75) {
+        detectedMode = 'SPRINT';
+      } else {
+        detectedMode = 'FREE_ROAM';
+      }
+    }
+
+    const lapsList = Array.from(this.laps.values());
+
+    // Point-to-Point Time Attack & Sprints (open road run with no loop gates)
+    if (lapsList.length === 0 && (detectedMode === 'TIME_ATTACK' || detectedMode === 'SPRINT') && totalDuration >= 8) {
+      const hotLapTime = Number((this.activeMovingTime > 5 ? this.activeMovingTime : totalDuration).toFixed(3));
+      const hotLap: LapRecord = {
+        lapNumber: 1,
+        lapTime: hotLapTime,
+        valid: !this.wasRewound
+      };
+      lapsList.push(hotLap);
+    }
+
+    const hasRecordedLaps = lapsList.length > 0;
+    const bestLap = hasRecordedLaps ? Math.min(...lapsList.map(l => l.lapTime)) : 0;
+
     const avgLap = hasRecordedLaps 
       ? lapsList.reduce((a, b) => a + b.lapTime, 0) / lapsList.length 
       : 0;
@@ -685,27 +824,6 @@ export class StintRecorder {
       consistencyScorePct,
       tireThermalSpread: Math.max(0, Math.round(this.peakTemp - 120))
     };
-
-    // Mode Detection: Preferred Mode ALWAYS wins if set by user!
-    let detectedMode: SessionMode = this.preferredMode || 'FREE_ROAM';
-    if (!this.preferredMode) {
-      const avgSpeedMph = totalDuration > 0 ? (distanceMiles / (totalDuration / 3600)) : 0;
-      const isIntentionalDrift = (driftSummary.timeInSlideSec >= 4.0 && driftSummary.slidePct >= 35 && driftSummary.transitionCount >= 3 && maxSlipDeg >= 22);
-
-      if (isIntentionalDrift) {
-        detectedMode = 'DRIFT';
-      } else if (this.jumpCount >= 2 || (this.jumpCount >= 1 && this.bottomingCount >= 3)) {
-        detectedMode = 'OFFROAD';
-      } else if (lapsList.length >= 2) {
-        detectedMode = 'CIRCUIT';
-      } else if (lapsList.length === 1 || bestLap > 0 || avgSpeedMph > 45) {
-        detectedMode = 'TIME_ATTACK';
-      } else if (totalDuration < 35 && this.topSpeed > 75) {
-        detectedMode = 'SPRINT';
-      } else {
-        detectedMode = 'FREE_ROAM';
-      }
-    }
 
     const qualityFlags: string[] = [];
     if (!hasRecordedLaps) qualityFlags.push('NO_IN_GAME_LAPS');

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { WebRtcTelemetryClient, type WebRtcDiagnostics } from '../lib/webrtc';
 import { getApiBaseUrl } from '../lib/api';
+import { globalLapEngine } from '../lib/lapEngine';
 
 export interface TelemetryData {
   speed_mph: number;
@@ -77,6 +78,31 @@ export interface TelemetryData {
   is_race_on: number;
   timestamp_ms: number;
   distance_traveled: number;
+  position_x: number;
+  position_y: number;
+  position_z: number;
+}
+
+export interface LiveLapState {
+  liveLapTime: number;
+  lapNumber: number;
+  lastLapTime: number;
+  bestLapTime: number;
+  state: 'IDLE' | 'STAGING' | 'RUNNING' | 'ARMED' | 'REWOUND';
+  distanceToGate: number | null;
+  isArmed: boolean;
+  liveDeltaVsPb: number | null;
+  isDirty: boolean;
+  hasCustomGate: boolean;
+  completedLaps: Array<{
+    lapNumber: number;
+    lapTime: number;
+    valid: boolean;
+    dirtyReason?: string;
+  }>;
+  setCustomGateAtCurrentPosition: () => void;
+  clearGate: () => void;
+  resetLapTiming: () => void;
 }
 
 export interface AnalyticsState {
@@ -116,6 +142,7 @@ export type TransportType = 'webrtc_p2p' | 'websocket_local' | 'disconnected' | 
 export interface TelemetryContextType {
   telemetry: TelemetryData | null;
   analytics: AnalyticsState | null;
+  lapState: LiveLapState;
   connected: boolean;
   reconnecting: boolean;
   transport: TransportType;
@@ -267,6 +294,9 @@ function normalizeTelemetry(raw: Record<string, any>): TelemetryData {
     is_race_on: typeof raw.IsRaceOn === 'number' ? raw.IsRaceOn : (typeof raw.is_race_on === 'number' ? raw.is_race_on : 1),
     timestamp_ms: typeof raw.TimestampMS === 'number' ? raw.TimestampMS : (typeof raw.timestamp_ms === 'number' ? raw.timestamp_ms : Date.now()),
     distance_traveled: typeof raw.DistanceTraveled === 'number' ? raw.DistanceTraveled : (typeof raw.distance_traveled === 'number' ? raw.distance_traveled : 0),
+    position_x: typeof raw.PositionX === 'number' ? raw.PositionX : (typeof raw.position_x === 'number' ? raw.position_x : 0),
+    position_y: typeof raw.PositionY === 'number' ? raw.PositionY : (typeof raw.position_y === 'number' ? raw.position_y : 0),
+    position_z: typeof raw.PositionZ === 'number' ? raw.PositionZ : (typeof raw.position_z === 'number' ? raw.position_z : 0),
   };
 }
 
@@ -289,6 +319,63 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
 
   const packetCountRef = useRef<number>(0);
   const lastRateCheckRef = useRef<number>(Date.now());
+  const latestTelemetryRef = useRef<TelemetryData | null>(null);
+
+  const [lapState, setLapState] = useState<LiveLapState>(() => ({
+    liveLapTime: 0,
+    lapNumber: 1,
+    lastLapTime: 0,
+    bestLapTime: 0,
+    state: 'IDLE',
+    distanceToGate: null,
+    isArmed: false,
+    liveDeltaVsPb: null,
+    isDirty: false,
+    hasCustomGate: !!globalLapEngine.getGate(),
+    completedLaps: [],
+    setCustomGateAtCurrentPosition: () => {},
+    clearGate: () => {},
+    resetLapTiming: () => {}
+  }));
+
+  const setCustomGateAtCurrentPosition = () => {
+    const t = latestTelemetryRef.current;
+    if (t) {
+      globalLapEngine.setCustomGate(
+        t.position_x,
+        t.position_y,
+        t.position_z,
+        t.velocity_x,
+        t.velocity_z,
+        30.0
+      );
+      updateLapStateFromEngine(t);
+    }
+  };
+
+  const clearGate = () => {
+    globalLapEngine.clearGate();
+    updateLapStateFromEngine(latestTelemetryRef.current);
+  };
+
+  const resetLapTiming = () => {
+    globalLapEngine.reset(true);
+    updateLapStateFromEngine(latestTelemetryRef.current);
+  };
+
+  const updateLapStateFromEngine = (t: TelemetryData | null) => {
+    const best = globalLapEngine.getBestLap();
+    const completed = globalLapEngine.getCompletedLaps();
+    const last = completed[completed.length - 1];
+
+    setLapState(prev => ({
+      ...prev,
+      lastLapTime: last?.lapTime || (t?.last_lap && t.last_lap > 0 ? t.last_lap : 0),
+      bestLapTime: best?.lapTime || (t?.best_lap && t.best_lap > 0 ? t.best_lap : 0),
+      hasCustomGate: !!globalLapEngine.getGate(),
+      completedLaps: completed
+    }));
+  };
 
   const handleIncomingTelemetry = (data: any) => {
     packetCountRef.current += 1;
@@ -300,10 +387,53 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
       lastRateCheckRef.current = now;
     }
 
+    let norm: TelemetryData | null = null;
     if (data.telemetry) {
-      setTelemetry(normalizeTelemetry(data.telemetry));
+      norm = normalizeTelemetry(data.telemetry);
     } else if (data.type === 'telemetry' && data.payload) {
-      setTelemetry(normalizeTelemetry(data.payload));
+      norm = normalizeTelemetry(data.payload);
+    }
+
+    if (norm) {
+      latestTelemetryRef.current = norm;
+      setTelemetry(norm);
+
+      // Process spatial lap inference & motion state
+      const lapRes = globalLapEngine.processFrame(
+        norm.position_x,
+        norm.position_y,
+        norm.position_z,
+        norm.velocity_x,
+        norm.velocity_y,
+        norm.velocity_z,
+        norm.speed_mph,
+        norm.current_race_time > 0 ? norm.current_race_time : Date.now() / 1000,
+        norm.timestamp_ms,
+        norm.current_lap,
+        norm.last_lap,
+        norm.lap_number
+      );
+
+      const completed = globalLapEngine.getCompletedLaps();
+      const best = globalLapEngine.getBestLap();
+      const last = completed[completed.length - 1];
+
+      setLapState({
+        liveLapTime: lapRes.liveLapTime,
+        lapNumber: lapRes.lapNumber,
+        lastLapTime: last?.lapTime || (norm.last_lap > 0 ? norm.last_lap : 0),
+        bestLapTime: best?.lapTime || (norm.best_lap > 0 ? norm.best_lap : 0),
+        state: lapRes.state,
+        distanceToGate: lapRes.distanceToGate,
+        isArmed: lapRes.isArmed,
+        liveDeltaVsPb: lapRes.liveDeltaVsPb,
+        isDirty: lapRes.isDirty,
+        hasCustomGate: !!globalLapEngine.getGate(),
+        completedLaps: completed,
+        setCustomGateAtCurrentPosition,
+        clearGate,
+        resetLapTiming
+      });
     }
 
     if (data.analytics_state) {
@@ -508,6 +638,7 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     <TelemetryContext.Provider value={{
       telemetry,
       analytics,
+      lapState,
       connected,
       reconnecting,
       transport,
