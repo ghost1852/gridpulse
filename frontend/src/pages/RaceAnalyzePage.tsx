@@ -195,34 +195,36 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
   };
 
   return (
-    <div className="p-3 sm:p-4 max-w-6xl mx-auto space-y-4 pb-32">
+    <div className="p-3 sm:p-4 max-w-6xl mx-auto space-y-4 pb-32 w-full max-w-full overflow-x-hidden min-w-0">
       {/* Header Banner & Live Stint Recorder Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#11111a] border border-white/10 rounded-2xl p-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-black font-mono text-white tracking-wider flex items-center gap-2">
-              <Activity size={20} className="text-cyan-400" />
-              RACE ANALYZE &amp; TELEMETRY LAB
-            </h1>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">
-              SESSION INTELLIGENCE
-            </span>
+      <div className="bg-[#11111a] border border-white/10 rounded-2xl p-3 sm:p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-black font-mono text-white tracking-wider flex items-center gap-2">
+                <Activity size={18} className="text-cyan-400" />
+                RACE ANALYZE &amp; TELEMETRY LAB
+              </h1>
+              <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">
+                SESSION INTEL
+              </span>
+            </div>
+            <p className="text-xs font-mono text-gray-400 mt-0.5">
+              Analyze driving stints, multi-lap overlays, wall impacts, drift angles &amp; AI datasets.
+            </p>
           </div>
-          <p className="text-xs font-mono text-gray-400 mt-1">
-            Analyze recorded driving stints, multi-lap overlays, wall impacts, drift angles, and export AI-ready datasets.
-          </p>
         </div>
 
         {/* Action Controls: Mode Selector, Import & Recorder */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-white/5 font-mono">
           {/* Mode Override Dropdown */}
-          <div className="flex items-center gap-1.5 bg-black/60 px-2.5 py-1.5 rounded-xl border border-white/10 text-xs font-mono">
-            <span className="text-gray-400 text-[10px] font-bold uppercase">MODE:</span>
+          <div className="flex items-center justify-between bg-black/60 px-3 py-2 rounded-xl border border-white/10 text-xs">
+            <span className="text-gray-400 text-[10px] font-bold uppercase shrink-0 mr-2">MODE:</span>
             <select
               value={preferredMode}
               onChange={(e) => setPreferredMode(e.target.value as any)}
               disabled={isRecording}
-              className="bg-transparent text-white font-bold outline-none cursor-pointer"
+              className="bg-transparent text-white font-bold outline-none cursor-pointer text-right w-full"
             >
               <option value="AUTO" className="bg-[#111118]">⚡ Auto-Detect</option>
               <option value="DRIFT" className="bg-[#111118]">💨 Drift</option>
@@ -234,6 +236,13 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
             </select>
           </div>
 
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-xs font-bold transition-all cursor-pointer"
+          >
+            <Upload size={14} />
+            <span>Import Stint JSON</span>
+          </button>
           <input
             type="file"
             ref={fileInputRef}
@@ -241,17 +250,10 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
             accept=".json"
             className="hidden"
           />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 text-xs font-mono font-bold transition-all cursor-pointer"
-          >
-            <Upload size={14} />
-            <span>Import</span>
-          </button>
 
           <button
             onClick={toggleRecording}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-mono font-black tracking-wider transition-all cursor-pointer shadow-lg ${
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs font-black tracking-wider transition-all cursor-pointer shadow-lg ${
               isRecording
                 ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse shadow-red-500/30'
                 : 'bg-emerald-500 hover:bg-emerald-600 text-black shadow-emerald-500/20'
@@ -260,12 +262,12 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
             {isRecording ? (
               <>
                 <Square size={14} className="fill-current" />
-                <span>STOP ({recordSeconds}s)</span>
+                <span>STOP RECORDING ({recordSeconds}s)</span>
               </>
             ) : (
               <>
                 <Play size={14} className="fill-current" />
-                <span>RECORD STINT</span>
+                <span>RECORD NEW STINT</span>
               </>
             )}
           </button>
@@ -283,71 +285,61 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
         </div>
       )}
 
-      {/* Stint History Reel */}
+      {/* Stint Selector Header Bar */}
       {stints.length > 0 ? (
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
-          {stints.map((stint) => {
-            const isSelected = stint.id === selectedStintId;
-            const hasLaps = stint.laps && stint.laps.length > 0;
-            return (
-              <div
-                key={stint.id}
-                onClick={() => setSelectedStintId(stint.id)}
-                className={`p-2.5 rounded-xl border transition-all cursor-pointer shrink-0 min-w-[210px] flex flex-col justify-between ${
-                  isSelected
-                    ? 'bg-cyan-950/40 border-cyan-400 shadow-md shadow-cyan-500/10'
-                    : 'bg-[#0e0e16] border-white/10 hover:border-white/20'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-1">
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className="text-[10px] font-mono font-bold text-gray-300 truncate max-w-[110px]">
-                      {stint.carName}
-                    </span>
-                    <span className={`text-[8px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                      stint.sessionMode === 'DRIFT' ? 'bg-amber-500/20 text-amber-300' :
-                      stint.sessionMode === 'CIRCUIT' ? 'bg-purple-500/20 text-purple-300' :
-                      stint.sessionMode === 'TIME_ATTACK' ? 'bg-emerald-500/20 text-emerald-300' :
-                      stint.sessionMode === 'OFFROAD' ? 'bg-orange-500/20 text-orange-300' :
-                      'bg-cyan-500/20 text-cyan-300'
-                    }`}>
-                      {stint.sessionMode || 'FREE'}
-                    </span>
-                  </div>
-                  <button
-                    onClick={(e) => handleDeleteStint(stint.id, e)}
-                    className="text-gray-500 hover:text-red-400 p-0.5 cursor-pointer"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-
-                <div className="my-1">
-                  <div className="text-xs font-mono font-black text-white">
-                    {hasLaps ? `${stint.totalLaps} Laps • ${formatLapTime(stint.bestLapTime)}` : `${stint.totalDurationSeconds}s Open Stint`}
-                  </div>
-                  <div className="text-[9px] font-mono text-gray-500">
-                    {new Date(stint.createdAt).toLocaleDateString()} {new Date(stint.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between text-[9px] font-mono text-gray-400 pt-1 border-t border-white/5">
-                  <span>{stint.topSpeedMph} MPH</span>
-                  <span>{stint.peakLatG}G</span>
-                  {stint.impacts && stint.impacts.length > 0 && (
-                    <span className="text-red-400 font-bold">{stint.impacts.length} Hit{stint.impacts.length > 1 ? 's' : ''}</span>
-                  )}
+        <div className="bg-[#11111a] border border-white/10 rounded-2xl p-3 sm:p-4 space-y-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="text-[11px] font-mono font-bold text-cyan-400 uppercase shrink-0">
+                STINTS ({stints.length}):
+              </span>
+              <div className="relative flex-1 min-w-0">
+                <select
+                  value={selectedStintId || ''}
+                  onChange={(e) => setSelectedStintId(e.target.value)}
+                  className="w-full bg-black/70 border border-white/15 rounded-xl px-3 py-2 text-xs font-mono font-bold text-white outline-none cursor-pointer truncate appearance-none pr-8 focus:border-cyan-400"
+                >
+                  {stints.map((s) => (
+                    <option key={s.id} value={s.id} className="bg-[#111118] text-white">
+                      {s.carName} [{s.sessionMode || 'FREE'}] — {s.laps && s.laps.length > 0 ? `${s.totalLaps} Laps (${formatLapTime(s.bestLapTime)})` : `${s.totalDurationSeconds}s Open`} • {s.topSpeedMph} MPH ({new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 text-xs">
+                  ▼
                 </div>
               </div>
-            );
-          })}
+            </div>
+
+            {/* Quick Actions for Selected Stint */}
+            {activeStint && (
+              <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                <button
+                  onClick={() => downloadStintJsonFile(activeStint)}
+                  title="Export Stint JSON"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 hover:text-white text-[11px] font-mono font-bold transition-all cursor-pointer"
+                >
+                  <Download size={13} className="text-cyan-400" />
+                  <span className="hidden sm:inline">Export</span>
+                </button>
+                <button
+                  onClick={(e) => selectedStintId && handleDeleteStint(selectedStintId, e)}
+                  title="Delete Stint"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 hover:text-red-200 text-[11px] font-mono font-bold transition-all cursor-pointer"
+                >
+                  <Trash2 size={13} />
+                  <span className="hidden sm:inline">Delete</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <Card className="p-6 text-center bg-[#0e0e16] border-white/10 space-y-2">
           <Activity size={28} className="mx-auto text-gray-600" />
           <h3 className="text-sm font-mono font-bold text-gray-300">No Stints Recorded Yet</h3>
           <p className="text-xs font-mono text-gray-500 max-w-md mx-auto">
-            Click <strong className="text-emerald-400">RECORD STINT</strong> while driving in Forza, or import an existing stint JSON file.
+            Click <strong className="text-emerald-400">RECORD NEW STINT</strong> while driving in Forza, or import an existing stint JSON file.
           </p>
         </Card>
       )}

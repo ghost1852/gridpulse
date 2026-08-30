@@ -1,11 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useTelemetry } from '../hooks/useTelemetry';
 import { useUnits } from '../context/UnitContext';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { TuningRecommendations } from '../components/hud/TuningRecommendations';
 import { getCarInfo, saveCustomCar } from '../lib/cars';
-import { copyTextToClipboard } from '../lib/clipboard';
 import { 
   Zap, 
   Flame, 
@@ -16,51 +15,9 @@ import {
   Waves,
   ArrowUpRight,
   Car,
-  Play,
-  Square,
-  History,
-  Download,
-  FileSpreadsheet,
-  Copy,
-  Trash2,
-  Check,
   X
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-
-interface TelemetrySample {
-  timeSec: number;
-  speedMph: number;
-  rpm: number;
-  gear: number;
-  throttle: number;
-  brake: number;
-  latG: number;
-  lonG: number;
-  tireTempFl: number;
-  tireTempFr: number;
-  tireTempRl: number;
-  tireTempRr: number;
-  suspFl: number;
-  suspFr: number;
-  suspRl: number;
-  suspRr: number;
-}
-
-interface StintRecord {
-  id: string;
-  startTime: string;
-  durationSec: number;
-  carName: string;
-  carClass: string;
-  carPi: number;
-  topSpeedMph: number;
-  peakLatG: number;
-  peakDecG: number;
-  distanceMiles: number;
-  bottomOuts: number;
-  samples?: TelemetrySample[];
-}
 
 export function VehicleStatsPage() {
   const { telemetry } = useTelemetry();
@@ -137,178 +94,6 @@ export function VehicleStatsPage() {
   if (data.torque_ftlb > peakTorqueRef.current) peakTorqueRef.current = data.torque_ftlb;
   if (data.boost_psi > peakBoostRef.current) peakBoostRef.current = data.boost_psi;
 
-  // Stint Recording State
-  const [isRecording, setIsRecording] = useState(false);
-  const [stintTimeSec, setStintTimeSec] = useState(0);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [stintHistory, setStintHistory] = useState<StintRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem('forza_stints_history');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const stintStatsRef = useRef({
-    startTime: '',
-    startSec: 0,
-    topSpeed: 0,
-    peakLatG: 0,
-    peakDecG: 0,
-    startDist: 0,
-    bottomOuts: 0,
-    samples: [] as TelemetrySample[],
-  });
-
-  // Stint timer interval
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | undefined;
-    if (isRecording) {
-      interval = setInterval(() => {
-        setStintTimeSec(s => s + 1);
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [isRecording]);
-
-  // Sample telemetry at 2Hz during recording stint
-  useEffect(() => {
-    if (isRecording) {
-      const speed = Math.round(data.speed_mph);
-      if (speed > stintStatsRef.current.topSpeed) {
-        stintStatsRef.current.topSpeed = speed;
-      }
-      const latG = Number((Math.abs(data.acceleration_x) / 9.81).toFixed(2));
-      if (latG > stintStatsRef.current.peakLatG) {
-        stintStatsRef.current.peakLatG = latG;
-      }
-      const decG = Number((Math.abs(Math.min(0, data.acceleration_z)) / 9.81).toFixed(2));
-      if (decG > stintStatsRef.current.peakDecG) {
-        stintStatsRef.current.peakDecG = decG;
-      }
-      if (data.susp_fl < 0.05 || data.susp_fr < 0.05 || data.susp_rl < 0.05 || data.susp_rr < 0.05) {
-        stintStatsRef.current.bottomOuts += 1;
-      }
-
-      // Record snapshot
-      stintStatsRef.current.samples.push({
-        timeSec: stintTimeSec,
-        speedMph: speed,
-        rpm: Math.round(data.current_engine_rpm),
-        gear: data.gear,
-        throttle: Math.round((data.accel / 255) * 100),
-        brake: Math.round((data.brake / 255) * 100),
-        latG,
-        lonG: Number((data.acceleration_z / 9.81).toFixed(2)),
-        tireTempFl: Math.round(data.tire_temp_fl),
-        tireTempFr: Math.round(data.tire_temp_fr),
-        tireTempRl: Math.round(data.tire_temp_rl),
-        tireTempRr: Math.round(data.tire_temp_rr),
-        suspFl: Number(data.susp_fl.toFixed(3)),
-        suspFr: Number(data.susp_fr.toFixed(3)),
-        suspRl: Number(data.susp_rl.toFixed(3)),
-        suspRr: Number(data.susp_rr.toFixed(3)),
-      });
-    }
-  }, [isRecording, stintTimeSec, data]);
-
-  const startStint = () => {
-    stintStatsRef.current = {
-      startTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      startSec: Date.now(),
-      topSpeed: Math.round(data.speed_mph),
-      peakLatG: Math.abs(data.acceleration_x) / 9.81,
-      peakDecG: 0,
-      startDist: 0,
-      bottomOuts: 0,
-      samples: [],
-    };
-    setStintTimeSec(0);
-    setIsRecording(true);
-  };
-
-  const stopStint = () => {
-    const activeCar = getCarInfo(data.car_ordinal, data.car_class_name, data.car_performance_index);
-    const newRecord: StintRecord = {
-      id: String(Date.now()),
-      startTime: stintStatsRef.current.startTime,
-      durationSec: stintTimeSec,
-      carName: `${activeCar.manufacturer} ${activeCar.name}`,
-      carClass: data.car_class_name,
-      carPi: data.car_performance_index,
-      topSpeedMph: stintStatsRef.current.topSpeed,
-      peakLatG: Number(stintStatsRef.current.peakLatG.toFixed(2)),
-      peakDecG: Number(stintStatsRef.current.peakDecG.toFixed(2)),
-      distanceMiles: Number(((stintStatsRef.current.topSpeed * (stintTimeSec / 3600)) * 0.75).toFixed(1)),
-      bottomOuts: stintStatsRef.current.bottomOuts,
-      samples: stintStatsRef.current.samples,
-    };
-
-    const updated = [newRecord, ...stintHistory].slice(0, 15);
-    setStintHistory(updated);
-    try {
-      localStorage.setItem('forza_stints_history', JSON.stringify(updated));
-    } catch {}
-  };
-
-  const deleteStint = (id: string) => {
-    const updated = stintHistory.filter(s => s.id !== id);
-    setStintHistory(updated);
-    try {
-      localStorage.setItem('forza_stints_history', JSON.stringify(updated));
-    } catch {}
-  };
-
-  // Export JSON file
-  const exportJson = (stint: StintRecord) => {
-    const jsonStr = JSON.stringify(stint, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `gridpulse_stint_${stint.carName.replace(/\s+/g, '_')}_${stint.id}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Export CSV file
-  const exportCsv = (stint: StintRecord) => {
-    const samples = stint.samples || [];
-    let csv = 'TimeSec,SpeedMPH,RPM,Gear,ThrottlePct,BrakePct,LatG,LonG,TireFL,TireFR,TireRL,TireRR,SuspFL,SuspFR,SuspRL,SuspRR\n';
-    samples.forEach(s => {
-      csv += `${s.timeSec},${s.speedMph},${s.rpm},${s.gear},${s.throttle},${s.brake},${s.latG},${s.lonG},${s.tireTempFl},${s.tireTempFr},${s.tireTempRl},${s.tireTempRr},${s.suspFl},${s.suspFr},${s.suspRl},${s.suspRr}\n`;
-    });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `gridpulse_telemetry_${stint.carName.replace(/\s+/g, '_')}_${stint.id}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  // Copy Markdown Race Engineer Debrief
-  const copyReport = async (stint: StintRecord) => {
-    const report = `**GRIDPULSE TELEMETRY STINT DEBRIEF**
-Vehicle: ${stint.carName} (${stint.carClass} ${stint.carPi})
-Time: ${stint.startTime} | Duration: ${Math.floor(stint.durationSec / 60)}m ${stint.durationSec % 60}s
-Top Speed: ${stint.topSpeedMph} MPH
-Peak Lateral G: ${stint.peakLatG} G
-Peak Braking Deceleration: ${stint.peakDecG} G
-Estimated Distance: ${stint.distanceMiles} Miles
-Suspension Bottom-Out Events: ${stint.bottomOuts}
-Samples Captured: ${stint.samples?.length || 0}`;
-
-    const ok = await copyTextToClipboard(report);
-    if (ok) {
-      setCopiedId(stint.id);
-      setTimeout(() => setCopiedId(null), 2000);
-    }
-  };
-
   // True Pitch and Roll in degrees
   const pitchDeg = Number(((data.pitch || 0) * (180 / Math.PI)).toFixed(1));
   const rollDeg = Number(((data.roll || 0) * (180 / Math.PI)).toFixed(1));
@@ -380,41 +165,19 @@ Samples Captured: ${stint.samples?.length || 0}`;
           </div>
         </div>
 
-        {/* Stint Recorder Controls */}
-        <div className="flex items-center gap-2.5 bg-black/60 p-2 rounded-xl border border-white/10 w-full sm:w-auto justify-between sm:justify-end">
-          <div className="flex items-center gap-2 px-1">
-            <div className={`w-2.5 h-2.5 rounded-full ${isRecording ? 'bg-red-500 animate-ping' : 'bg-gray-600'}`} />
+        {/* Live Stream Status & Stint Link */}
+        <div className="flex items-center gap-2 bg-black/60 px-3 py-2 rounded-xl border border-white/10 w-full sm:w-auto justify-between sm:justify-end font-mono">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#00ff88] animate-pulse" />
             <div className="flex flex-col">
-              <span className="text-[8px] font-mono text-gray-400 uppercase font-bold">
-                {isRecording ? 'RECORDING' : 'STINT TIMER'}
+              <span className="text-[8px] text-gray-400 uppercase font-bold tracking-wider">
+                PHYSICS DATA STREAM
               </span>
-              <span className="text-xs font-mono font-black text-white">
-                {Math.floor(stintTimeSec / 60).toString().padStart(2, '0')}:{(stintTimeSec % 60).toString().padStart(2, '0')}
+              <span className="text-xs font-black text-emerald-400">
+                LIVE TELEMETRY
               </span>
             </div>
           </div>
-
-          {!isRecording ? (
-            <button
-              type="button"
-              onPointerDown={startStint}
-              onClick={startStint}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-[11px] font-mono font-bold uppercase transition-all shadow-md cursor-pointer touch-manipulation"
-            >
-              <Play size={12} fill="currentColor" />
-              <span>Record</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onPointerDown={stopStint}
-              onClick={stopStint}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 active:bg-white/40 text-white text-[11px] font-mono font-bold uppercase transition-colors cursor-pointer touch-manipulation"
-            >
-              <Square size={12} fill="currentColor" />
-              <span>Finish &amp; Save</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -783,98 +546,6 @@ Samples Captured: ${stint.samples?.length || 0}`;
         brake={data.brake}
         speedMph={data.speed_mph}
       />
-
-      {/* Grid 5: Saved Stints & Telemetry Runs with Export Controls */}
-      {stintHistory.length > 0 && (
-        <Card className="p-4 space-y-3 bg-[#0e0e16] border-white/10">
-          <div className="flex items-center justify-between border-b border-white/5 pb-2">
-            <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-gray-400">
-              <History size={14} className="text-emerald-400" />
-              <span>SAVED STINTS &amp; TELEMETRY RUNS</span>
-            </div>
-            <span className="text-[10px] font-mono text-emerald-400 font-bold">
-              {stintHistory.length} Saved {stintHistory.length === 1 ? 'Run' : 'Runs'}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-0.5 font-mono text-xs">
-            {stintHistory.map(stint => (
-              <div key={stint.id} className="p-3.5 bg-black/50 border border-white/10 rounded-xl space-y-2.5 hover:border-emerald-500/30 transition-colors">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-white text-sm">{stint.carName}</span>
-                  <span className="text-[10px] text-gray-500">{stint.startTime}</span>
-                </div>
-
-                {/* Stint Key Stats */}
-                <div className="grid grid-cols-4 gap-2 text-[10px] bg-white/5 p-2 rounded-lg border border-white/5">
-                  <div>
-                    <span className="text-gray-500 block text-[8px] uppercase">Duration</span>
-                    <span className="font-bold text-white">{Math.floor(stint.durationSec / 60)}m {stint.durationSec % 60}s</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 block text-[8px] uppercase">Top Speed</span>
-                    <span className="font-bold text-emerald-400">{stint.topSpeedMph} MPH</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 block text-[8px] uppercase">Peak G</span>
-                    <span className="font-bold text-white">{stint.peakLatG} G</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 block text-[8px] uppercase">Bottom-Outs</span>
-                    <span className={`font-bold ${stint.bottomOuts > 0 ? 'text-amber-400' : 'text-gray-400'}`}>
-                      {stint.bottomOuts}x
-                    </span>
-                  </div>
-                </div>
-
-                {/* Stint Export Action Toolbar */}
-                <div className="flex items-center justify-between pt-1 border-t border-white/5">
-                  <div className="flex items-center gap-1.5">
-                    {/* JSON Export */}
-                    <button
-                      onClick={() => exportJson(stint)}
-                      title="Download JSON Telemetry payload"
-                      className="flex items-center gap-1 px-2.5 py-1 rounded bg-white/5 hover:bg-emerald-500/20 text-[10px] text-gray-300 hover:text-emerald-300 border border-white/10 transition-colors cursor-pointer"
-                    >
-                      <Download size={11} />
-                      <span>JSON</span>
-                    </button>
-
-                    {/* CSV Export */}
-                    <button
-                      onClick={() => exportCsv(stint)}
-                      title="Download CSV for Excel / MoTeC"
-                      className="flex items-center gap-1 px-2.5 py-1 rounded bg-white/5 hover:bg-cyan-500/20 text-[10px] text-gray-300 hover:text-cyan-300 border border-white/10 transition-colors cursor-pointer"
-                    >
-                      <FileSpreadsheet size={11} />
-                      <span>CSV</span>
-                    </button>
-
-                    {/* Copy Markdown Debrief */}
-                    <button
-                      onClick={() => copyReport(stint)}
-                      title="Copy Stint Debrief to clipboard"
-                      className="flex items-center gap-1 px-2.5 py-1 rounded bg-white/5 hover:bg-amber-500/20 text-[10px] text-gray-300 hover:text-amber-300 border border-white/10 transition-colors cursor-pointer"
-                    >
-                      {copiedId === stint.id ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                      <span>{copiedId === stint.id ? 'Copied' : 'Debrief'}</span>
-                    </button>
-                  </div>
-
-                  {/* Delete Stint */}
-                  <button
-                    onClick={() => deleteStint(stint.id)}
-                    title="Delete Stint from garage"
-                    className="p-1.5 rounded bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 transition-colors cursor-pointer"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
     </div>
   );
 }

@@ -79,8 +79,20 @@ export function HudPage() {
     car_ordinal: 2544
   };
 
+  // Loss-of-control dynamic edge warning (severe spin / snap oversteer / full lockup at speed)
+  const avgRearSlip = ((data.tire_slip_rl || 0) + (data.tire_slip_rr || 0)) / 2;
+  const avgFrontSlip = ((data.tire_slip_fl || 0) + (data.tire_slip_fr || 0)) / 2;
+  const isSevereOversteer = (avgRearSlip - avgFrontSlip > 0.65) && data.speed_mph > 25;
+  const isSevereLockup = ((data.slip_ratio_fl || 0) < -0.85 || (data.slip_ratio_fr || 0) < -0.85) && data.brake > 150 && data.speed_mph > 30;
+  const isLossOfControl = isSevereOversteer || isSevereLockup;
+
   return (
-    <div className="w-full h-full">
+    <div className="w-full h-full relative">
+      {/* Loss of Control Edge Warning Vignette */}
+      {isLossOfControl && (
+        <div className="fixed inset-0 pointer-events-none z-50 border-4 border-red-500/50 shadow-[inset_0_0_35px_rgba(255,34,68,0.4)] animate-pulse" />
+      )}
+
       {/* ========================================================================= */}
       {/* 1. VERTICAL PORTRAIT MODE: Clean Single-Screen Cockpit Layout             */}
       {/* ========================================================================= */}

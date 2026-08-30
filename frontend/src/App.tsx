@@ -103,7 +103,7 @@ export function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative overflow-y-auto overflow-x-hidden w-full max-w-full min-w-0 min-h-0 bg-gradient-to-br from-[#0a0a0f] to-[#111118]">
+      <main className="flex-1 flex flex-col relative overflow-y-auto overflow-x-hidden w-full max-w-full min-w-0 min-h-0 bg-gradient-to-br from-[#0a0a0f] to-[#111118] safe-area-pt">
         {/* Clean Non-Overlapping Landscape Top Bar */}
         <header className="hidden landscape:flex lg:landscape:hidden items-center justify-between px-3 py-1 bg-[#0a0a10]/95 border-b border-white/10 shrink-0 z-40">
           <div className="flex items-center gap-2">
