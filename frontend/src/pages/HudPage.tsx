@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useTelemetry } from '../hooks/useTelemetry';
 import { Speedometer } from '../components/hud/Speedometer';
 import { TireTemps } from '../components/hud/TireTemps';
+import { LapTimer } from '../components/hud/LapTimer';
 import { GForceCircle } from '../components/hud/GForceCircle';
-import { BoostGauge } from '../components/hud/BoostGauge';
 import { CarInfo } from '../components/hud/CarInfo';
 import { RaceAlertBanner } from '../components/hud/RaceAlertBanner';
 import { TractionDynamics } from '../components/hud/TractionDynamics';
@@ -146,8 +146,8 @@ export function HudPage() {
 
         {/* 2-Column Core Telemetry Matrix: All 4 Sub-Gauges Visible on Single Screen */}
         <div className="grid grid-cols-2 gap-2 min-w-0 w-full">
-          {/* Top-Left: Tires & Lap Timer */}
-          <div className="min-w-0 h-full">
+          {/* Top-Left: Pure 4-Corner Tire Thermals & Suspension */}
+          <div className="min-w-0 h-full min-h-[175px]">
             <TireTemps 
               fl={data.tire_temp_fl} fr={data.tire_temp_fr} 
               rl={data.tire_temp_rl} rr={data.tire_temp_rr} 
@@ -157,6 +157,12 @@ export function HudPage() {
               slipAngleRl={data.slip_angle_rl} slipAngleRr={data.slip_angle_rr}
               suspFl={data.susp_fl} suspFr={data.susp_fr}
               suspRl={data.susp_rl} suspRr={data.susp_rr}
+            />
+          </div>
+
+          {/* Top-Right: Dedicated Lap Timer & Time Attack Controls (Set, Reset, Clear) */}
+          <div className="min-w-0 h-full min-h-[175px]">
+            <LapTimer 
               currentLap={data.current_lap > 0 ? data.current_lap : lapState.liveLapTime}
               bestLap={data.best_lap > 0 ? data.best_lap : lapState.bestLapTime}
               lastLap={data.last_lap > 0 ? data.last_lap : lapState.lastLapTime}
@@ -170,17 +176,8 @@ export function HudPage() {
             />
           </div>
 
-          {/* Top-Right: G-Force Friction Circle */}
-          <div className="min-w-0 h-full">
-            <GForceCircle 
-              accelX={data.acceleration_x} 
-              accelZ={data.acceleration_z} 
-              slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
-            />
-          </div>
-
           {/* Bottom-Left: Chassis Balance & Dynamic Traction */}
-          <div className="min-w-0 h-full">
+          <div className="min-w-0 h-full min-h-[175px]">
             <TractionDynamics
               slipAngleFl={data.slip_angle_fl}
               slipAngleFr={data.slip_angle_fr}
@@ -205,10 +202,12 @@ export function HudPage() {
             />
           </div>
 
-          {/* Bottom-Right: Analog/Digital Boost Gauge */}
-          <div className="min-w-0 h-full">
-            <BoostGauge 
-              boostPsi={data.boost_psi}
+          {/* Bottom-Right: G-Force Friction Circle (Moved from top-right) */}
+          <div className="min-w-0 h-full min-h-[175px]">
+            <GForceCircle 
+              accelX={data.acceleration_x} 
+              accelZ={data.acceleration_z} 
+              slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
             />
           </div>
         </div>
@@ -239,10 +238,10 @@ export function HudPage() {
           </button>
         </div>
 
-        {/* Top Row: 3-Column Gauges (Tires & Laps | Speed & Pedals | G-Force & Boost) */}
+        {/* Top Row: 3-Column Gauges (Tires | Speed & Pedals | Lap Timing & G-Force Stack) */}
         <div className="grid grid-cols-12 gap-2 items-stretch flex-1 min-h-0">
-          {/* Left: Tires & Center Lap Timer (col 5) */}
-          <div className="col-span-5 flex flex-col justify-center">
+          {/* Left: Pure 4-Corner Tire Thermals (col 4) */}
+          <div className="col-span-4 flex flex-col justify-center">
             <TireTemps 
               fl={data.tire_temp_fl} fr={data.tire_temp_fr} 
               rl={data.tire_temp_rl} rr={data.tire_temp_rr} 
@@ -252,16 +251,6 @@ export function HudPage() {
               slipAngleRl={data.slip_angle_rl} slipAngleRr={data.slip_angle_rr}
               suspFl={data.susp_fl} suspFr={data.susp_fr}
               suspRl={data.susp_rl} suspRr={data.susp_rr}
-              currentLap={data.current_lap > 0 ? data.current_lap : lapState.liveLapTime}
-              bestLap={data.best_lap > 0 ? data.best_lap : lapState.bestLapTime}
-              lastLap={data.last_lap > 0 ? data.last_lap : lapState.lastLapTime}
-              lapNumber={data.lap_number > 0 ? data.lap_number : lapState.lapNumber}
-              liveDeltaVsPb={lapState.liveDeltaVsPb}
-              isArmed={lapState.isArmed}
-              isDirty={lapState.isDirty}
-              hasCustomGate={lapState.hasCustomGate}
-              onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
-              onClearGate={lapState.clearGate}
             />
           </div>
 
@@ -283,8 +272,22 @@ export function HudPage() {
             />
           </div>
 
-          {/* Right: G-Force Circle & Boost Gauge Stack (col 3) */}
-          <div className="col-span-3 flex flex-col justify-between gap-2">
+          {/* Right: Lap Timer & G-Force Stack (col 4) */}
+          <div className="col-span-4 flex flex-col justify-between gap-2">
+            <div className="flex-1 min-h-0">
+              <LapTimer 
+                currentLap={data.current_lap > 0 ? data.current_lap : lapState.liveLapTime}
+                bestLap={data.best_lap > 0 ? data.best_lap : lapState.bestLapTime}
+                lastLap={data.last_lap > 0 ? data.last_lap : lapState.lastLapTime}
+                lapNumber={data.lap_number > 0 ? data.lap_number : lapState.lapNumber}
+                liveDeltaVsPb={lapState.liveDeltaVsPb}
+                isArmed={lapState.isArmed}
+                isDirty={lapState.isDirty}
+                hasCustomGate={lapState.hasCustomGate}
+                onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
+                onClearGate={lapState.clearGate}
+              />
+            </div>
             <div className="flex-1 min-h-0">
               <GForceCircle 
                 accelX={data.acceleration_x} 
@@ -292,10 +295,6 @@ export function HudPage() {
                 slipAngleDelta={((Math.abs(data.slip_angle_rl || 0) + Math.abs(data.slip_angle_rr || 0)) / 2) - ((Math.abs(data.slip_angle_fl || 0) + Math.abs(data.slip_angle_fr || 0)) / 2)}
               />
             </div>
-            <BoostGauge 
-              boostPsi={data.boost_psi}
-              compact={true}
-            />
           </div>
         </div>
 
