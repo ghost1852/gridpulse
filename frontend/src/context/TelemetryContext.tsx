@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { WebRtcTelemetryClient, type WebRtcDiagnostics } from '../lib/webrtc';
 import { getApiBaseUrl } from '../lib/api';
-import { globalLapEngine } from '../lib/lapEngine';
+import { globalLapEngine, playGateChime } from '../lib/lapEngine';
 
 export interface TelemetryData {
   speed_mph: number;
@@ -94,6 +94,16 @@ export interface LiveLapState {
   liveDeltaVsPb: number | null;
   isDirty: boolean;
   hasCustomGate: boolean;
+  gateInfo: {
+    position: { x: number; y: number; z: number };
+    headingDeg: number;
+    widthMeters: number;
+  } | null;
+  lastFeedback: {
+    message: string;
+    timestamp: number;
+    type: 'success' | 'info' | 'cleared';
+  } | null;
   completedLaps: Array<{
     lapNumber: number;
     lapTime: number;
@@ -320,6 +330,11 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
   const packetCountRef = useRef<number>(0);
   const lastRateCheckRef = useRef<number>(Date.now());
   const latestTelemetryRef = useRef<TelemetryData | null>(null);
+  const [lastFeedback, setLastFeedback] = useState<{
+    message: string;
+    timestamp: number;
+    type: 'success' | 'info' | 'cleared';
+  } | null>(null);
 
   const [lapState, setLapState] = useState<LiveLapState>(() => ({
     liveLapTime: 0,
@@ -332,6 +347,8 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
     liveDeltaVsPb: null,
     isDirty: false,
     hasCustomGate: !!globalLapEngine.getGate(),
+    gateInfo: globalLapEngine.getGateInfo(),
+    lastFeedback: null,
     completedLaps: [],
     setCustomGateAtCurrentPosition: () => {},
     clearGate: () => {},
@@ -340,30 +357,82 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
 
   const setCustomGateAtCurrentPosition = () => {
     const t = latestTelemetryRef.current;
-    if (t) {
+    playGateChime('set');
+
+    if (t && (t.position_x !== 0 || t.position_z !== 0)) {
       globalLapEngine.setCustomGate(
         t.position_x,
         t.position_y,
         t.position_z,
         t.velocity_x,
         t.velocity_z,
+        t.yaw,
         30.0
       );
-      updateLapStateFromEngine(t);
+      const heading = Math.round((((Math.atan2(Math.sin(t.yaw), Math.cos(t.yaw)) * 180) / Math.PI + 360) % 360));
+      const msg = `📍 S/F Line set @ X: ${t.position_x.toFixed(1)}, Z: ${t.position_z.toFixed(1)} (${heading}°)! Floor throttle to start.`;
+      setLastFeedback({
+        message: msg,
+        timestamp: Date.now(),
+        type: 'success'
+      });
+      updateLapStateFromEngine(t, { message: msg, timestamp: Date.now(), type: 'success' });
+    } else {
+      globalLapEngine.setCustomGate(0, 0, 0, 0, 0, 0, 30.0);
+      const msg = '📍 S/F Line set at origin! (Start Forza telemetry stream for real GPS coordinates)';
+      setLastFeedback({
+        message: msg,
+        timestamp: Date.now(),
+        type: 'info'
+      });
+      updateLapStateFromEngine(null, { message: msg, timestamp: Date.now(), type: 'info' });
     }
   };
 
   const clearGate = () => {
     globalLapEngine.clearGate();
-    updateLapStateFromEngine(latestTelemetryRef.current);
+    playGateChime('lap');
+    const msg = '🗑 S/F Gate cleared! Returned to free-roam mode.';
+    setLastFeedback({
+      message: msg,
+      timestamp: Date.now(),
+      type: 'cleared'
+    });
+
+    const best = globalLapEngine.getBestLap();
+    const completed = globalLapEngine.getCompletedLaps();
+    const last = completed[completed.length - 1];
+
+    setLapState(prev => ({
+      ...prev,
+      liveLapTime: 0,
+      lapNumber: 1,
+      lastLapTime: last?.lapTime || 0,
+      bestLapTime: best?.lapTime || 0,
+      state: 'IDLE',
+      distanceToGate: null,
+      isArmed: false,
+      liveDeltaVsPb: null,
+      isDirty: false,
+      hasCustomGate: false,
+      gateInfo: null,
+      lastFeedback: { message: msg, timestamp: Date.now(), type: 'cleared' },
+      completedLaps: completed,
+      setCustomGateAtCurrentPosition,
+      clearGate,
+      resetLapTiming
+    }));
   };
 
   const resetLapTiming = () => {
     globalLapEngine.reset(true);
-    updateLapStateFromEngine(latestTelemetryRef.current);
+    updateLapStateFromEngine(latestTelemetryRef.current, lastFeedback);
   };
 
-  const updateLapStateFromEngine = (t: TelemetryData | null) => {
+  const updateLapStateFromEngine = (
+    t: TelemetryData | null, 
+    fb: { message: string; timestamp: number; type: 'success' | 'info' | 'cleared' } | null = lastFeedback
+  ) => {
     const best = globalLapEngine.getBestLap();
     const completed = globalLapEngine.getCompletedLaps();
     const last = completed[completed.length - 1];
@@ -373,7 +442,12 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
       lastLapTime: last?.lapTime || (t?.last_lap && t.last_lap > 0 ? t.last_lap : 0),
       bestLapTime: best?.lapTime || (t?.best_lap && t.best_lap > 0 ? t.best_lap : 0),
       hasCustomGate: !!globalLapEngine.getGate(),
-      completedLaps: completed
+      gateInfo: globalLapEngine.getGateInfo(),
+      lastFeedback: fb,
+      completedLaps: completed,
+      setCustomGateAtCurrentPosition,
+      clearGate,
+      resetLapTiming
     }));
   };
 
@@ -429,6 +503,8 @@ export function TelemetryProvider({ children }: { children: React.ReactNode }) {
         liveDeltaVsPb: lapRes.liveDeltaVsPb,
         isDirty: lapRes.isDirty,
         hasCustomGate: !!globalLapEngine.getGate(),
+        gateInfo: globalLapEngine.getGateInfo(),
+        lastFeedback,
         completedLaps: completed,
         setCustomGateAtCurrentPosition,
         clearGate,

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card } from '../ui/Card';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../lib/utils';
-import { Activity, Timer, X, Sparkles } from 'lucide-react';
+import { Activity, Timer, X, Sparkles, MapPin, Trash2 } from 'lucide-react';
 import { useUnits } from '../../context/UnitContext';
 
 interface TireTempsProps {
@@ -31,6 +31,7 @@ interface TireTempsProps {
   isDirty?: boolean;
   hasCustomGate?: boolean;
   onSetCustomGate?: () => void;
+  onClearGate?: () => void;
 }
 
 export function TireTemps({ 
@@ -45,7 +46,8 @@ export function TireTemps({
   liveDeltaVsPb,
   isDirty,
   hasCustomGate,
-  onSetCustomGate
+  onSetCustomGate,
+  onClearGate
 }: TireTempsProps) {
   const { convertTemp } = useUnits();
   const [inspectedCorner, setInspectedCorner] = useState<'FL' | 'FR' | 'RL' | 'RR' | null>(null);
@@ -249,18 +251,49 @@ export function TireTemps({
               </span>
             )}
 
-            {/* S/F Gate Pill */}
-            {onSetCustomGate && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSetCustomGate();
-                }}
-                className="mt-1 text-[7px] font-mono bg-white/10 hover:bg-cyan-500/20 text-gray-300 hover:text-cyan-400 px-1.5 py-0.5 rounded font-bold transition"
-                title="Set Start/Finish Gate at current GPS location"
-              >
-                {hasCustomGate ? 'RESET S/F' : 'SET S/F'}
-              </button>
+            {/* S/F Gate Action Buttons */}
+            {hasCustomGate ? (
+              <div className="mt-1 flex items-center justify-center gap-1">
+                {onSetCustomGate && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSetCustomGate();
+                    }}
+                    className="text-[7px] font-mono bg-purple-500/25 hover:bg-purple-500/40 text-purple-200 hover:text-white px-1.5 py-0.5 rounded font-bold transition cursor-pointer border border-purple-500/30"
+                    title="Move/Reset Start/Finish Line to current vehicle position"
+                  >
+                    RESET S/F
+                  </button>
+                )}
+                {onClearGate && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClearGate();
+                    }}
+                    className="text-[7px] font-mono bg-red-500/20 hover:bg-red-500/35 text-red-300 hover:text-red-100 px-1.5 py-0.5 rounded font-bold transition cursor-pointer border border-red-500/30 flex items-center gap-0.5"
+                    title="Clear Start/Finish Gate"
+                  >
+                    <Trash2 size={7} />
+                    <span>CLEAR</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              onSetCustomGate && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSetCustomGate();
+                  }}
+                  className="mt-1 text-[7px] font-mono bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 hover:text-emerald-100 px-2 py-0.5 rounded font-bold transition cursor-pointer flex items-center gap-0.5 border border-emerald-500/30"
+                  title="Set Start/Finish Gate at current GPS location"
+                >
+                  <MapPin size={7} />
+                  <span>SET S/F</span>
+                </button>
+              )
             )}
           </div>
         </div>

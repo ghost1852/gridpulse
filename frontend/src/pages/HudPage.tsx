@@ -166,6 +166,7 @@ export function HudPage() {
               isDirty={lapState.isDirty}
               hasCustomGate={lapState.hasCustomGate}
               onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
+              onClearGate={lapState.clearGate}
             />
           </div>
 
@@ -260,6 +261,7 @@ export function HudPage() {
               isDirty={lapState.isDirty}
               hasCustomGate={lapState.hasCustomGate}
               onSetCustomGate={lapState.setCustomGateAtCurrentPosition}
+              onClearGate={lapState.clearGate}
             />
           </div>
 

@@ -32,6 +32,44 @@ export interface LapRecord {
 
 export type MotionState = 'IDLE' | 'STAGING' | 'RUNNING' | 'ARMED' | 'REWOUND';
 
+export function playGateChime(type: 'set' | 'lap' | 'armed') {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      if (type === 'set') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
+        osc.frequency.exponentialRampToValueAtTime(880.0, ctx.currentTime + 0.12); // A5
+        gain.gain.setValueAtTime(0.18, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.18);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.18);
+      } else if (type === 'lap') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.08); // E5
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.16); // G5
+        gain.gain.setValueAtTime(0.22, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+      }
+    }
+  } catch {}
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      navigator.vibrate([40, 30, 40]);
+    }
+  } catch {}
+}
+
 export class LapInferenceEngine {
   private gate: SpatialGate | null = null;
   private lastPos: { x: number; y: number; z: number } | null = null;
@@ -68,19 +106,44 @@ export class LapInferenceEngine {
     } catch {}
   }
 
-  public setCustomGate(x: number, y: number, z: number, vx: number, vz: number, width = 30.0) {
-    const vMag = Math.sqrt(vx * vx + vz * vz) || 1.0;
+  public setCustomGate(x: number, y: number, z: number, vx = 0, vz = 0, yaw = 0, width = 30.0) {
+    let nx = vx;
+    let nz = vz;
+    const vMag = Math.sqrt(nx * nx + nz * nz);
+
+    if (vMag >= 0.5) {
+      nx = nx / vMag;
+      nz = nz / vMag;
+    } else {
+      // Vehicle is stationary at start line: derive forward normal directly from vehicle Yaw
+      // In Forza, Yaw=0 is +Z (North), Yaw=PI/2 is +X (East)
+      nx = Math.sin(yaw);
+      nz = Math.cos(yaw);
+      if (nx === 0 && nz === 0) {
+        nz = 1.0; // Default forward along +Z
+      }
+    }
+
     this.gate = {
       position: { x, y, z },
-      normal: { x: vx / vMag, z: vz / vMag },
+      normal: { x: nx, z: nz },
       widthMeters: width,
       createdAt: Date.now()
     };
+
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.setItem('gp_custom_sf_gate', JSON.stringify(this.gate));
       }
     } catch {}
+
+    // Reset current active lap to prepare for fresh crossing/launch from this gate
+    this.currentLapIndex = 1;
+    this.lapStartTime = 0;
+    this.lapStartDistance = this.distanceTraveled;
+    this.isLapDirty = false;
+    this.dirtyReason = undefined;
+    this.activeLapTrajectory = [];
     this.state = 'ARMED';
   }
 
@@ -88,9 +151,31 @@ export class LapInferenceEngine {
     return this.gate;
   }
 
+  public getGateInfo(): {
+    position: { x: number; y: number; z: number };
+    normal: { x: number; z: number };
+    headingDeg: number;
+    widthMeters: number;
+  } | null {
+    if (!this.gate) return null;
+    const heading = Math.round((((Math.atan2(this.gate.normal.x, this.gate.normal.z) * 180) / Math.PI + 360) % 360));
+    return {
+      position: this.gate.position,
+      normal: this.gate.normal,
+      headingDeg: heading,
+      widthMeters: this.gate.widthMeters
+    };
+  }
+
   public clearGate() {
     this.gate = null;
     this.state = 'IDLE';
+    this.currentLapIndex = 1;
+    this.lapStartTime = 0;
+    this.lapStartDistance = 0;
+    this.isLapDirty = false;
+    this.dirtyReason = undefined;
+    this.activeLapTrajectory = [];
     try {
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem('gp_custom_sf_gate');

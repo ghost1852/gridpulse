@@ -237,19 +237,27 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
             </select>
           </div>
 
-          {/* S/F Gate Control */}
-          <button
-            onClick={lapState.setCustomGateAtCurrentPosition}
-            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-              lapState.hasCustomGate
-                ? 'bg-purple-500/20 border-purple-500/40 text-purple-300 hover:bg-purple-500/30'
-                : 'bg-white/5 hover:bg-cyan-500/20 hover:text-cyan-300 border-white/10 text-gray-300'
-            }`}
-            title="Set spatial Start/Finish Line at current vehicle GPS position and heading"
-          >
-            <MapPin size={14} className={lapState.hasCustomGate ? "text-purple-400" : "text-cyan-400"} />
-            <span>{lapState.hasCustomGate ? 'Reset S/F Gate' : 'Set S/F Line'}</span>
-          </button>
+          {/* S/F Gate Control Buttons */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={lapState.setCustomGateAtCurrentPosition}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer border bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30 active:scale-95 shadow-[0_0_15px_rgba(0,255,136,0.1)]"
+              title="Pin Start/Finish Line at vehicle's current GPS position and heading"
+            >
+              <MapPin size={14} className="text-emerald-400" />
+              <span>{lapState.hasCustomGate ? 'Move S/F Here' : 'Set S/F Line'}</span>
+            </button>
+
+            {lapState.hasCustomGate && (
+              <button
+                onClick={lapState.clearGate}
+                className="px-2.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 text-xs font-bold transition-all cursor-pointer shrink-0"
+                title="Clear Start/Finish Gate"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
 
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -287,6 +295,35 @@ Please act as an expert race engineer and driver coach. Analyze this ${activeSti
             )}
           </button>
         </div>
+
+        {/* Live Active Gate Info Strip */}
+        {lapState.hasCustomGate && lapState.gateInfo && (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-purple-500/15 border border-purple-500/30 text-xs font-mono text-purple-300 animate-fadeIn">
+            <div className="flex items-center gap-2">
+              <MapPin size={15} className="text-purple-400 animate-pulse shrink-0" />
+              <span>
+                <strong>S/F GATE ACTIVE:</strong> X: {lapState.gateInfo.position.x.toFixed(1)}, Z: {lapState.gateInfo.position.z.toFixed(1)} (Heading: {lapState.gateInfo.headingDeg}°) • Gate Width: {lapState.gateInfo.widthMeters}m
+              </span>
+            </div>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+              ARMED &amp; READY
+            </span>
+          </div>
+        )}
+
+        {/* Instant Action Feedback Toast Banner */}
+        {lapState.lastFeedback && Date.now() - lapState.lastFeedback.timestamp < 6000 && (
+          <div className={`px-3 py-2 rounded-xl text-xs font-mono border flex items-center gap-2 animate-bounce shadow-lg ${
+            lapState.lastFeedback.type === 'success'
+              ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+              : lapState.lastFeedback.type === 'cleared'
+              ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+              : 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300'
+          }`}>
+            <Check size={16} className="shrink-0 text-emerald-400" />
+            <span className="font-bold">{lapState.lastFeedback.message}</span>
+          </div>
+        )}
       </div>
 
       {/* Live Recording Notice & No-Lap Warning */}
